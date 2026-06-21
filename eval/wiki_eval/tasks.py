@@ -16,6 +16,7 @@ from inspect_ai.dataset import Sample, json_dataset
 from wiki_eval.scorers import (
     abstention_judge,
     correctness_judge,
+    multilingual_correctness,
     retrieval_grounding,
     used_wikipedia_tool,
 )
@@ -97,4 +98,43 @@ def wiki_agent_abstention():
         ),
         solver=wiki_agent_solver(),
         scorer=[abstention_judge(), used_wikipedia_tool()],
+    )
+
+
+def _multilingual_record_to_sample(record: dict) -> Sample:
+    """Map a multilingual_qa row to a Sample, carrying category/language tags.
+
+    These tags drive the grouped per-category and per-language metrics in
+    `multilingual_correctness`; storing them flat in the JSONL mirrors the
+    FRAMES loader's handling of `reference_pages`.
+    """
+    return Sample(
+        input=record["input"],
+        target=record["target"],
+        metadata={
+            "category": record["category"],
+            "language": record["language"],
+            "language_name": record["language_name"],
+            "hop_type": record["hop_type"],
+        },
+    )
+
+
+@task
+def multilingual_qa():
+    """Low-resource multilingual QA over Wikipedia.
+
+    Probes three product failure modes of the English-only tool: facts only on a
+    non-English page (cross_lingual_fact), obscure people whose native page is
+    richer or English-absent (richer_native_page), and questions asked in the
+    native language (foreign_language_query). Scored by a language-neutral judge
+    with per-category / per-language breakdowns.
+    """
+    return Task(
+        dataset=json_dataset(
+            str(_DATASETS / "multilingual_qa.jsonl"),
+            sample_fields=_multilingual_record_to_sample,
+        ),
+        solver=wiki_agent_solver(),
+        scorer=[multilingual_correctness(), used_wikipedia_tool()],
     )
