@@ -17,6 +17,7 @@ from __future__ import annotations
 import html
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
@@ -32,7 +33,9 @@ TOOL_SCHEMA = {
         "Look things up on English Wikipedia. Use action='search' to find "
         "relevant article titles from a query, then action='get_article' to "
         "read an article's introduction by its exact title. Search first when "
-        "you are unsure of the exact title."
+        "you are unsure of the exact title. To look up several things at once, "
+        "pass a `queries` list (with action='search') or a `titles` list (with "
+        "action='get_article') in one call — they run in parallel."
     ),
     "input_schema": {
         "type": "object",
@@ -49,6 +52,16 @@ TOOL_SCHEMA = {
             "title": {
                 "type": "string",
                 "description": "Exact article title. Required when action='get_article'.",
+            },
+            "queries": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Several search terms to run in parallel in one call (use instead of 'query').",
+            },
+            "titles": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Several exact article titles to fetch in parallel in one call (use instead of 'title').",
             },
             "limit": {
                 "type": "integer",
@@ -231,17 +244,66 @@ def get_article(title: str, chars: int = config.DEFAULT_EXTRACT_CHARS, *, client
             client.close()
 
 
+def _truncate(items: list[str]) -> tuple[list[str], str]:
+    """Cap a batch to MAX_BATCH; return (kept, note) with a note when dropping."""
+    if len(items) <= config.MAX_BATCH:
+        return list(items), ""
+    dropped = len(items) - config.MAX_BATCH
+    return list(items[: config.MAX_BATCH]), (
+        f"\n\n(Note: {dropped} extra item(s) beyond the {config.MAX_BATCH}-lookup "
+        "limit were skipped.)"
+    )
+
+
+def search_many(queries: list[str], limit: int = config.DEFAULT_SEARCH_LIMIT, *,
+                client: httpx.Client | None = None) -> str:
+    """Run several searches in parallel; return labeled, concatenated results."""
+    queries, note = _truncate(queries)
+    owns = client is None
+    client = client or _make_client()
+    try:
+        with ThreadPoolExecutor(max_workers=config.MAX_CONCURRENCY) as pool:
+            results = list(pool.map(lambda q: search(q, limit, client=client), queries))
+    finally:
+        if owns:
+            client.close()
+    blocks = [f"=== search: {q!r} ===\n{r}" for q, r in zip(queries, results)]
+    return "\n\n".join(blocks) + note
+
+
+def get_articles(titles: list[str], chars: int = config.DEFAULT_EXTRACT_CHARS, *,
+                 client: httpx.Client | None = None) -> str:
+    """Fetch several articles in parallel; return labeled, concatenated results."""
+    titles, note = _truncate(titles)
+    owns = client is None
+    client = client or _make_client()
+    try:
+        with ThreadPoolExecutor(max_workers=config.MAX_CONCURRENCY) as pool:
+            results = list(pool.map(lambda t: get_article(t, chars, client=client), titles))
+    finally:
+        if owns:
+            client.close()
+    blocks = [f"=== article: {t!r} ===\n{r}" for t, r in zip(titles, results)]
+    return "\n\n".join(blocks) + note
+
+
 def dispatch(tool_input: dict, *, client: httpx.Client | None = None) -> str:
     """Route a tool-call payload to the right action. Returns a readable string."""
     action = tool_input.get("action")
     if action == "search":
+        queries = tool_input.get("queries")
+        if queries:
+            return search_many(queries, tool_input.get("limit", config.DEFAULT_SEARCH_LIMIT), client=client)
         query = tool_input.get("query")
         if not query:
-            return "Error: action='search' requires a 'query'."
+            return "Error: action='search' requires a 'query' or 'queries'."
         return search(query, tool_input.get("limit", config.DEFAULT_SEARCH_LIMIT), client=client)
     if action == "get_article":
+        titles = tool_input.get("titles")
+        if titles:
+            return get_articles(titles, tool_input.get("chars", config.DEFAULT_EXTRACT_CHARS), client=client)
         title = tool_input.get("title")
         if not title:
-            return "Error: action='get_article' requires a 'title'."
+            return "Error: action='get_article' requires a 'title' or 'titles'."
         return get_article(title, tool_input.get("chars", config.DEFAULT_EXTRACT_CHARS), client=client)
     return f"Error: unknown action '{action}'. Use 'search' or 'get_article'."

@@ -164,3 +164,74 @@ def test_get_served_from_cache_skips_http(monkeypatch, tmp_path):
     assert first == {"query": {"v": 1}} and client.calls == 1
     second = wikipedia._get({"action": "query", "titles": "Cat"}, FakeClient([]))
     assert second == {"query": {"v": 1}}  # served from cache, no pop from empty
+
+
+# ---------------------------------------------------------------------------
+# Parallel multi-query batch lookups
+# ---------------------------------------------------------------------------
+
+
+def test_truncate_caps_to_max_batch(monkeypatch):
+    monkeypatch.setattr(config, "MAX_BATCH", 2)
+    items, note = wikipedia._truncate(["a", "b", "c", "d"])
+    assert items == ["a", "b"]
+    assert "2 extra" in note
+
+
+def test_truncate_no_note_within_limit():
+    items, note = wikipedia._truncate(["a", "b"])
+    assert items == ["a", "b"] and note == ""
+
+
+def test_search_many_fans_out_in_order_with_shared_client(monkeypatch):
+    calls = []
+
+    def fake_search(q, limit, *, client=None):
+        calls.append((q, limit, client))
+        return f"R:{q}"
+
+    monkeypatch.setattr(wikipedia, "search", fake_search)
+    out = wikipedia.search_many(["a", "b", "c"], 5, client="shared")
+    assert "=== search: 'a' ===\nR:a" in out
+    assert out.index("R:a") < out.index("R:b") < out.index("R:c")
+    assert [c[0] for c in calls] == ["a", "b", "c"]
+    assert all(c[1] == 5 and c[2] == "shared" for c in calls)
+
+
+def test_get_articles_fans_out(monkeypatch):
+    monkeypatch.setattr(wikipedia, "get_article", lambda t, chars, *, client=None: f"A:{t}:{chars}")
+    out = wikipedia.get_articles(["X", "Y"], 100, client="shared")
+    assert "=== article: 'X' ===\nA:X:100" in out
+    assert "A:Y:100" in out
+
+
+def test_search_many_truncates(monkeypatch):
+    monkeypatch.setattr(config, "MAX_BATCH", 2)
+    monkeypatch.setattr(wikipedia, "search", lambda q, limit, *, client=None: f"R:{q}")
+    out = wikipedia.search_many(["a", "b", "c", "d"], client="s")
+    assert "R:a" in out and "R:b" in out and "R:c" not in out
+    assert "2 extra" in out
+
+
+def test_dispatch_routes_search_many(monkeypatch):
+    monkeypatch.setattr(wikipedia, "search_many", lambda qs, limit, *, client=None: f"many:{qs}:{limit}")
+    out = wikipedia.dispatch({"action": "search", "queries": ["a", "b"], "limit": 3})
+    assert out == "many:['a', 'b']:3"
+
+
+def test_dispatch_routes_get_articles(monkeypatch):
+    monkeypatch.setattr(wikipedia, "get_articles", lambda ts, chars, *, client=None: f"arts:{ts}")
+    out = wikipedia.dispatch({"action": "get_article", "titles": ["X", "Y"]})
+    assert out == "arts:['X', 'Y']"
+
+
+def test_dispatch_empty_queries_falls_back_to_single(monkeypatch):
+    monkeypatch.setattr(wikipedia, "search", lambda q, limit, *, client=None: f"one:{q}")
+    out = wikipedia.dispatch({"action": "search", "queries": [], "query": "z"})
+    assert out == "one:z"
+
+
+def test_schema_advertises_lists():
+    props = wikipedia.TOOL_SCHEMA["input_schema"]["properties"]
+    assert props["queries"]["type"] == "array"
+    assert props["titles"]["type"] == "array"
