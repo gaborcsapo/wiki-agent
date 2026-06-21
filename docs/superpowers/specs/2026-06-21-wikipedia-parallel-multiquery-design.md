@@ -121,7 +121,12 @@ and a 25-sample subset makes accuracy deltas noisy.
     `sample.metadata["trajectory"]["steps"]`,
   - **batch usage** — fraction of tool calls whose input contains a non-empty
     `queries`/`titles` list, and the mean list length when batched,
-  - **agent tokens** — summed input/output usage for the Sonnet model.
+  - **agent tokens (approx)** — summed `input_tokens`/`output_tokens` from the
+    trajectory's recorded steps. NOTE: the agent calls Anthropic directly, so
+    Inspect's `model_usage` captures only the Haiku judge, not the Sonnet agent;
+    and trajectory tokens are recorded only on turns that emit text, so this is
+    an approximate floor. **`avg steps` (= Sonnet round-trips) is the reliable
+    primary efficiency metric**; tokens are reported as an approximate secondary.
 - A separate I/O helper pulls wall-clock from the log stats.
 - Prints a side-by-side table with deltas (baseline → feature).
 
@@ -140,9 +145,9 @@ turns/tokens).
 | Metric | Source | Cache-sensitive? | Role |
 |--------|--------|------------------|------|
 | FRAMES accuracy | correctness scorer | no | primary |
-| avg steps | `metadata["steps"]` | no | primary |
+| avg steps (round-trips) | `metadata["steps"]` | no | primary |
 | avg tool calls | trajectory | no | primary |
-| agent tokens | log model_usage (Sonnet) | no | primary |
+| agent tokens (approx) | trajectory steps | no | secondary |
 | batch-usage rate / size | trajectory tool inputs | no | adoption |
 | wall-clock | log stats | yes (warm-vs-warm) | secondary |
 
