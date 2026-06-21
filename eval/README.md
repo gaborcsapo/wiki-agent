@@ -37,6 +37,7 @@ bars).
 | `wiki_eval/scorers.py` | LLM-judge correctness + custom trajectory scorer |
 | `wiki_eval/tasks.py` | Benchmark registry (one `@task` per benchmark) |
 | `wiki_eval/datasets/factual_qa.jsonl` | 10 hand-written QA examples |
+| `wiki_eval/datasets/abstention.jsonl` | 30 should-abstain questions + 6 answerable controls |
 
 ## Setup
 
@@ -65,6 +66,28 @@ judge:
 ```bash
 uv run inspect eval wiki_eval/tasks.py@factual_qa \
   --model-role grader=anthropic/claude-sonnet-4-6
+```
+
+## Benchmarks
+
+### WikiAgentAbstention
+
+Measures whether the agent **abstains** — declines, asks to clarify, or flags a
+problem — instead of fabricating an answer it cannot ground. 30
+abstention-positive questions across seven categories (false premise,
+unknowable, stale/real-time, underspecified, subjective, garbled voice-typing,
+out-of-scope) plus 6 answerable controls to catch over-abstention. Inspired by
+Meta FAIR's AbstentionBench (arXiv:2506.09038).
+
+A binary `abstention_judge` labels each answer ABSTAIN/ANSWER (a confident answer
+with a token caveat still counts as ANSWER) and grades it against the row's
+`should_abstain`. Metrics: abstention **recall** (caught the unanswerable),
+**precision** (didn't over-abstain on controls), **F1**, and overall accuracy.
+`used_wikipedia_tool` is reported as a diagnostic only — for garbled/out-of-scope
+rows, *not* searching is often the correct behavior.
+
+```bash
+uv run inspect eval wiki_eval/tasks.py@wiki_agent_abstention --model anthropic/claude-haiku-4-5
 ```
 
 ## View results (over Tailscale)

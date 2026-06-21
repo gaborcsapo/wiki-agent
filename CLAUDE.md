@@ -42,7 +42,7 @@ File map:
 | `eval/wiki_eval/solver.py` | Wraps `wiki_agent.run` as an Inspect solver |
 | `eval/wiki_eval/scorers.py` | LLM-judge + custom trajectory scorers |
 | `eval/wiki_eval/tasks.py` | Benchmark registry (one `@task` each) |
-| `eval/wiki_eval/datasets/*.jsonl` | Benchmark data (`{"input", "target"}`) |
+| `eval/wiki_eval/datasets/*.jsonl` | Benchmark data (`{"input", "target"}`, plus optional per-row metadata, e.g. `reference_pages` for FRAMES, `should_abstain`/`category` for abstention) |
 
 ## Development principles
 
