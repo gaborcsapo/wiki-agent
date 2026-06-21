@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 
 from . import config
 
@@ -37,9 +39,20 @@ def set(params: dict, data: dict) -> None:
         return
     config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     path = config.CACHE_DIR / f"{_key(params)}.json"
+    # Write to a unique temp file then atomically rename, so a crash or two
+    # concurrent writers of the same key can never leave a truncated file (which
+    # would be a permanent cache poison — there is no eviction).
     try:
-        with path.open("w", encoding="utf-8") as fh:
-            json.dump(data, fh)
+        fd, tmp = tempfile.mkstemp(dir=config.CACHE_DIR, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(data, fh)
+            os.replace(tmp, path)
+        except Exception:  # noqa: BLE001 — caching is best-effort, never raise
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
     except OSError:
         pass
 

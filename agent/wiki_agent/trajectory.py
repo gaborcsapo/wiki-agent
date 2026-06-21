@@ -7,7 +7,7 @@ tool result, and the final answer is captured in order and can be saved to JSON.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -50,8 +50,16 @@ class Trajectory:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Trajectory":
-        """Rebuild a Trajectory from the dict produced by ``to_dict``."""
-        steps = [Step(**step) for step in data.get("steps", [])]
+        """Rebuild a Trajectory from the dict produced by ``to_dict``.
+
+        Unknown keys are dropped so a cached demo JSON written by an older/newer
+        ``Step`` schema still replays instead of raising ``TypeError``.
+        """
+        known = {f.name for f in fields(Step)}
+        steps = [
+            Step(**{k: v for k, v in step.items() if k in known})
+            for step in data.get("steps", [])
+        ]
         return cls(
             question=data["question"],
             model=data["model"],

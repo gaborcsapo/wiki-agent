@@ -107,7 +107,11 @@ def _one_request(client: httpx.Client, kind: str, term: str, maxlag: bool) -> Re
         return Result(False, resp.status_code, False, latency, True)
     if resp.status_code != 200:
         return Result(False, resp.status_code, False, latency, False)
-    is_maxlag = resp.json().get("error", {}).get("code") == "maxlag"
+    try:
+        body = resp.json()
+    except ValueError:
+        body = {}
+    is_maxlag = body.get("error", {}).get("code") == "maxlag"
     return Result(not is_maxlag, 200, is_maxlag, latency, is_maxlag)
 
 
@@ -157,26 +161,39 @@ def _run_setup(setup: Setup) -> list[Result]:
     )
     pool = ThreadPoolExecutor(max_workers=setup.concurrency) if setup.concurrency > 1 else None
     try:
-        while len(results) < BUDGET_PER_SETUP and consecutive < EARLY_STOP_CONSECUTIVE:
+        stop = False
+        while len(results) < BUDGET_PER_SETUP and not stop:
             window_end = time.monotonic() + WINDOW_SECONDS
             batch: list[Result] = []
-            while time.monotonic() < window_end and len(results) + len(batch) < BUDGET_PER_SETUP:
+            while time.monotonic() < window_end and not stop:
+                # Never fire more than the remaining budget, so a concurrent chunk
+                # can't push the total past BUDGET_PER_SETUP.
+                room = BUDGET_PER_SETUP - len(results) - len(batch)
+                if room <= 0:
+                    break
                 jobs = []
-                for _ in range(setup.concurrency):
+                for _ in range(min(setup.concurrency, room)):
                     kind, term = QUERIES[idx % len(QUERIES)]
                     idx += 1
                     jobs.append((kind, term))
                 if pool is None:
-                    batch.append(_one_request(client, *jobs[0], setup.maxlag))
+                    chunk = [_one_request(client, *jobs[0], setup.maxlag)]
                 else:
                     futures = [pool.submit(_one_request, client, k, t, setup.maxlag)
                                for k, t in jobs]
-                    batch.extend(f.result() for f in futures)
+                    chunk = [f.result() for f in futures]
+                # Update the consecutive-throttle counter per request and stop the
+                # moment the threshold is hit — don't keep firing for the rest of
+                # the window once sustained throttling is detected.
+                for r in chunk:
+                    batch.append(r)
+                    consecutive = consecutive + 1 if r.throttled else 0
+                    if consecutive >= EARLY_STOP_CONSECUTIVE:
+                        stop = True
+                        break
             results.extend(batch)
-            for r in batch:
-                consecutive = consecutive + 1 if r.throttled else 0
-                if consecutive >= EARLY_STOP_CONSECUTIVE:
-                    break
+            if stop:
+                break
             if any(r.throttled for r in batch):
                 time.sleep(5.0)       # polite backoff after a throttled window
             else:

@@ -23,11 +23,18 @@ STEP_DELAY_SECONDS = 0.8
 
 
 def load_demos(directory: Path = DEMOS_DIR) -> list[Trajectory]:
-    """Parse every ``*.json`` demo in ``directory``, sorted by filename."""
-    return [
-        Trajectory.from_dict(json.loads(path.read_text()))
-        for path in sorted(directory.glob("*.json"))
-    ]
+    """Parse every ``*.json`` demo in ``directory``, sorted by filename.
+
+    A corrupt or partially written file is skipped rather than crashing the
+    whole demo command (the recorder can be interrupted mid-write).
+    """
+    demos: list[Trajectory] = []
+    for path in sorted(directory.glob("*.json")):
+        try:
+            demos.append(Trajectory.from_dict(json.loads(path.read_text())))
+        except (OSError, ValueError, KeyError):
+            continue  # malformed JSON / missing required fields
+    return demos
 
 
 def pick_demo(trajectories: list[Trajectory], rng=random) -> Trajectory:

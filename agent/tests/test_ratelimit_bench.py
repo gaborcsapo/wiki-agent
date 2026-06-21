@@ -27,6 +27,14 @@ def test_summarize_percentiles_ordered():
     assert s.p50 <= s.p95
 
 
+def test_percentile_known_values():
+    vals = [0.1, 0.2, 0.3, 0.4]
+    assert rb._percentile(vals, 0.0) == 0.1     # min
+    assert rb._percentile(vals, 1.0) == 0.4     # max
+    assert abs(rb._percentile(vals, 0.5) - 0.25) < 1e-9  # interpolated median
+    assert rb._percentile([], 0.5) == 0.0       # empty -> 0.0, no crash
+
+
 def test_pick_best_prefers_no_throttle_then_throughput():
     fast_throttled = Summary(name="fast", sent=10, successes=10, throttled=3,
         status_429=3, status_503=0, maxlag=0, timeouts=0, p50=0.1, p95=0.2,

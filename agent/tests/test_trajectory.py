@@ -35,6 +35,19 @@ def test_from_dict_round_trips_to_dict():
     assert restored.steps[0].output_tokens == 5
 
 
+def test_from_dict_ignores_unknown_step_keys():
+    # A demo JSON written by a different Step schema must still replay.
+    data = {
+        "question": "Q?",
+        "model": "m",
+        "answer": "A.",
+        "steps": [{"kind": "assistant_text", "content": "hi", "future_field": 123}],
+    }
+    traj = Trajectory.from_dict(data)
+    assert traj.steps[0].content == "hi"
+    assert traj.answer == "A."
+
+
 def test_save_writes_json_file(tmp_path):
     traj = Trajectory(question="Q?", model="m")
     traj.add(Step(kind=FINAL_ANSWER, content="hi"))

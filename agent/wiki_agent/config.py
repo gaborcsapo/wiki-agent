@@ -46,8 +46,9 @@ CACHE_ENABLED = True
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".wiki_cache"
 
 # Parallel multi-query lookups: fan out a batched tool call over the cached
-# single-call path. MAX_CONCURRENCY matches Wikimedia's documented concurrent
-# ceiling; MAX_BATCH caps how many lookups one tool call may request.
+# single-call path. MAX_CONCURRENCY is a deliberately conservative self-imposed
+# cap on in-flight requests (well under the 200 req/min compliant-UA tier);
+# MAX_BATCH caps how many lookups one tool call may request.
 MAX_CONCURRENCY = 3
 MAX_BATCH = 10
 

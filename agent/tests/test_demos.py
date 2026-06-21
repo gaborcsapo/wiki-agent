@@ -35,6 +35,16 @@ def test_load_demos_parses_all_json_sorted(tmp_path):
     assert isinstance(loaded[0], Trajectory)
 
 
+def test_load_demos_skips_corrupt_file(tmp_path):
+    _write_demo(tmp_path, "00.json", _sample_trajectory("Good?"))
+    (tmp_path / "01.json").write_text("{ this is not valid json")
+
+    loaded = player.load_demos(tmp_path)
+
+    # The corrupt file is skipped, not fatal.
+    assert [t.question for t in loaded] == ["Good?"]
+
+
 def test_pick_demo_uses_injected_rng():
     trajs = [_sample_trajectory("A?"), _sample_trajectory("B?")]
 
@@ -60,6 +70,21 @@ def test_record_demos_writes_one_json_per_question(tmp_path):
     data = json.loads((tmp_path / "00.json").read_text())
     assert data["question"] == "Q-one?"
     assert data["steps"][0]["kind"] == "assistant_text"
+
+
+def test_record_demos_prunes_stale_files_from_larger_previous_set(tmp_path):
+    from wiki_agent.demos import record
+    from wiki_agent.agent import AgentResult
+
+    def fake_run(question):
+        return AgentResult(answer="A.", trajectory=_sample_trajectory(question), steps=1)
+
+    # A previous, larger set leaves 02.json behind.
+    (tmp_path / "02.json").write_text("stale")
+    paths = record.record_demos(tmp_path, questions=["Q-one?", "Q-two?"], run_fn=fake_run)
+
+    assert [p.name for p in paths] == ["00.json", "01.json"]
+    assert not (tmp_path / "02.json").exists()  # stale demo pruned
 
 
 def test_play_renders_non_final_steps_with_injected_sleep():
