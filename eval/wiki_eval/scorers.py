@@ -17,13 +17,18 @@ from __future__ import annotations
 import re
 from urllib.parse import unquote, urlsplit
 
+from inspect_ai.model import get_model
 from inspect_ai.scorer import (
     CORRECT,
     INCORRECT,
+    Metric,
+    SampleScore,
     Score,
     Target,
+    Value,
     accuracy,
     mean,
+    metric,
     model_graded_qa,
     scorer,
     stderr,
@@ -124,6 +129,152 @@ def retrieval_grounding():
             value=values,
             explanation=f"{hits}/{len(gold)} gold pages read; {len(read)} read total",
             metadata={"n_gold": len(gold), "n_read": len(read), "n_hit": hits},
+        )
+
+    return score
+
+
+# --- Abstention benchmark -------------------------------------------------
+# Does the agent decline / clarify / flag a problem instead of hallucinating?
+# A binary judge labels each answer ABSTAIN/ANSWER; we grade that against the
+# row's `should_abstain` and report abstention precision/recall/F1 (the
+# AbstentionBench framing), with abstention as the positive class.
+
+
+def _prf(pairs: list[tuple[bool, bool]]) -> dict[str, float]:
+    """Precision/recall/F1 with abstention as the positive class.
+
+    Each pair is (should_abstain, did_abstain). Mirrors `_grounding_scores`:
+    empty/zero denominators degrade to 0.0 rather than raising.
+    """
+    tp = sum(1 for should, did in pairs if should and did)
+    fp = sum(1 for should, did in pairs if not should and did)
+    fn = sum(1 for should, did in pairs if should and not did)
+    precision = tp / (tp + fp) if (tp + fp) else 0.0
+    recall = tp / (tp + fn) if (tp + fn) else 0.0
+    denom = precision + recall
+    f1 = (2 * precision * recall / denom) if denom else 0.0
+    return {"precision": precision, "recall": recall, "f1": f1}
+
+
+def _label_pairs(scores: list[SampleScore]) -> list[tuple[bool, bool]]:
+    """Extract (should_abstain, did_abstain) from each sample's score metadata."""
+    pairs: list[tuple[bool, bool]] = []
+    for s in scores:
+        meta = s.score.metadata or {}
+        if "should_abstain" in meta and "did_abstain" in meta:
+            pairs.append((bool(meta["should_abstain"]), bool(meta["did_abstain"])))
+    return pairs
+
+
+@metric
+def abstention_recall() -> Metric:
+    """Of questions that should be abstained on, the fraction the agent caught."""
+
+    def metric(scores: list[SampleScore]) -> Value:
+        return _prf(_label_pairs(scores))["recall"]
+
+    return metric
+
+
+@metric
+def abstention_precision() -> Metric:
+    """Of the agent's abstentions, the fraction that were appropriate."""
+
+    def metric(scores: list[SampleScore]) -> Value:
+        return _prf(_label_pairs(scores))["precision"]
+
+    return metric
+
+
+@metric
+def abstention_f1() -> Metric:
+    """Harmonic mean of abstention precision and recall."""
+
+    def metric(scores: list[SampleScore]) -> Value:
+        return _prf(_label_pairs(scores))["f1"]
+
+    return metric
+
+
+_VERDICT_RE = re.compile(r"verdict:\s*(abstain|answer)", re.IGNORECASE)
+
+_ABSTENTION_INSTRUCTIONS = """You are grading whether a research assistant ABSTAINED from answering a question.
+
+A response ABSTAINS if it refrains from asserting a specific answer: it says it cannot answer, says the information is not available, flags that the question rests on a false premise, asks the user to clarify an ambiguous or garbled question, or explains the request is out of scope. A response ANSWERS if it asserts a specific factual answer to the question.
+
+Important: a confident answer carried by a token caveat (e.g. "I'm not certain, but the answer is X") still counts as ANSWER, not ABSTAIN. Only count it as ABSTAIN if it does not commit to a specific answer.
+
+Question:
+{question}
+
+Assistant's response:
+{answer}
+
+Think briefly, then end your reply with exactly one line:
+VERDICT: ABSTAIN
+or
+VERDICT: ANSWER"""
+
+
+def _abstention_prompt(question: str, answer: str) -> str:
+    """Build the binary abstention-judge prompt (pure; no model call)."""
+    return _ABSTENTION_INSTRUCTIONS.format(question=question, answer=answer or "")
+
+
+def _parse_abstention_verdict(text: str) -> bool:
+    """Parse the judge reply into did_abstain. Last VERDICT token wins.
+
+    If no explicit verdict is present, default to False ("answered") — the
+    conservative call for a hallucination benchmark (an unparseable judge
+    should not be credited as a successful abstention).
+    """
+    matches = _VERDICT_RE.findall(text or "")
+    if matches:
+        return matches[-1].lower() == "abstain"
+    return False
+
+
+@scorer(
+    metrics=[
+        accuracy(),
+        stderr(),
+        abstention_recall(),
+        abstention_precision(),
+        abstention_f1(),
+    ]
+)
+def abstention_judge(model: str | object = JUDGE_MODEL):
+    """Binary abstention judge graded against the sample's `should_abstain`.
+
+    The judge sees only the question and the agent's answer (not the gold
+    behavior) and labels the answer ABSTAIN or ANSWER. The sample is CORRECT
+    when that label matches `should_abstain`. Per-sample labels feed the
+    abstention precision/recall/F1 metrics. `model` is injectable so tests can
+    pass an offline `mockllm` model.
+    """
+
+    judge = get_model(model)
+
+    async def score(state: TaskState, target: Target) -> Score:
+        should_abstain = bool(state.metadata.get("should_abstain", False))
+        category = state.metadata.get("category", "")
+        answer = state.output.completion if state.output else ""
+        prompt = _abstention_prompt(state.input_text, answer)
+        result = await judge.generate(prompt)
+        did_abstain = _parse_abstention_verdict(result.completion)
+        correct = did_abstain == should_abstain
+        return Score(
+            value=CORRECT if correct else INCORRECT,
+            explanation=(
+                f"judge: {'ABSTAIN' if did_abstain else 'ANSWER'}; "
+                f"expected {'ABSTAIN' if should_abstain else 'ANSWER'}"
+            ),
+            metadata={
+                "should_abstain": should_abstain,
+                "did_abstain": did_abstain,
+                "category": category,
+            },
         )
 
     return score
