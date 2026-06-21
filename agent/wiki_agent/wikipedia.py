@@ -35,7 +35,12 @@ TOOL_SCHEMA = {
         "read an article's introduction by its exact title. Search first when "
         "you are unsure of the exact title. To look up several things at once, "
         "pass a `queries` list (with action='search') or a `titles` list (with "
-        "action='get_article') in one call — they run in parallel."
+        "action='get_article') in one call — they run in parallel. "
+        "Wikipedia has a separate edition per language: set `lang` to the "
+        "language code of the country/topic (e.g. hu=Hungarian, is=Icelandic, "
+        "et=Estonian, sw=Swahili, hy=Armenian, cy=Welsh, eu=Basque, ka=Georgian, "
+        "yo=Yoruba, de, fr, es, ja). Local facts and people are often only on, or "
+        "richer on, their native-language edition — query that edition directly."
     ),
     "input_schema": {
         "type": "object",
@@ -62,6 +67,10 @@ TOOL_SCHEMA = {
                 "type": "array",
                 "items": {"type": "string"},
                 "description": "Several exact article titles to fetch in parallel in one call (use instead of 'title').",
+            },
+            "lang": {
+                "type": "string",
+                "description": "Wikipedia language edition code (default 'en'). E.g. hu, is, et, sw, hy, cy, eu, ka, yo, de, fr, es, ja.",
             },
             "limit": {
                 "type": "integer",
@@ -102,7 +111,7 @@ def _parse_search(data: dict, query: str) -> str:
     return "\n".join(lines)
 
 
-def _parse_extract(data: dict, title: str) -> str:
+def _parse_extract(data: dict, title: str, lang: str = config.DEFAULT_LANG) -> str:
     """Format an ``action=query&prop=extracts`` JSON response into readable text."""
     pages = data.get("query", {}).get("pages", [])
     if not pages:
@@ -117,7 +126,7 @@ def _parse_extract(data: dict, title: str) -> str:
     resolved = page.get("title", title)
     if not extract:
         return f"The article '{resolved}' has no readable extract."
-    url = "https://en.wikipedia.org/wiki/" + resolved.replace(" ", "_")
+    url = f"https://{lang}.wikipedia.org/wiki/" + resolved.replace(" ", "_")
     return f"{resolved}\n{url}\n\n{extract}"
 
 
@@ -154,20 +163,28 @@ def _is_maxlag(data: dict) -> bool:
     return data.get("error", {}).get("code") == "maxlag"
 
 
-def _get(params: dict, client: httpx.Client) -> dict:
+def _api_url(lang: str) -> str:
+    """API endpoint for a given Wikipedia language edition (e.g. 'hu' -> hu.wiki)."""
+    return config.WIKI_API_TEMPLATE.format(lang=lang)
+
+
+def _get(params: dict, client: httpx.Client, lang: str = config.DEFAULT_LANG) -> dict:
     """MediaWiki API GET with disk cache + Retry-After/exponential backoff.
 
     ``params`` are the semantic query params; transport params (format,
-    formatversion, maxlag) are added here and excluded from the cache key so
-    cache hits stay stable across runs.
+    formatversion, maxlag) are added here and excluded from the cache key. The
+    ``lang`` (Wikipedia edition) IS part of the cache key, so the same title on
+    different editions never collides.
     """
-    cached = cache.get(params)
+    cache_params = {"__lang__": lang, **params}
+    cached = cache.get(cache_params)
     if cached is not None:
         return cached
 
+    url = _api_url(lang)
     base = {"format": "json", "formatversion": 2, "maxlag": config.MAXLAG}
     for attempt in range(config.MAX_RETRIES + 1):
-        response = client.get(config.WIKI_API, params={**base, **params})
+        response = client.get(url, params={**base, **params})
         if response.status_code in _RETRY_STATUS:
             if attempt < config.MAX_RETRIES:
                 _sleep(_retry_delay(attempt, response.headers.get("Retry-After")))
@@ -180,7 +197,7 @@ def _get(params: dict, client: httpx.Client) -> dict:
                 _sleep(_retry_delay(attempt, response.headers.get("Retry-After")))
                 continue
             return data  # exhausted maxlag -> parser renders a benign message
-        cache.set(params, data)
+        cache.set(cache_params, data)
         return data
 
     raise httpx.HTTPError("retries exhausted")  # pragma: no cover
@@ -198,14 +215,16 @@ def _make_client() -> httpx.Client:
 # ---------------------------------------------------------------------------
 
 
-def search(query: str, limit: int = config.DEFAULT_SEARCH_LIMIT, *, client: httpx.Client | None = None) -> str:
-    """Full-text search Wikipedia; return a numbered list of titles + snippets."""
+def search(query: str, limit: int = config.DEFAULT_SEARCH_LIMIT, *,
+           lang: str = config.DEFAULT_LANG, client: httpx.Client | None = None) -> str:
+    """Full-text search a Wikipedia edition; return a numbered list of titles."""
     owns = client is None
     client = client or _make_client()
     try:
         data = _get(
             {"action": "query", "list": "search", "srsearch": query, "srlimit": limit},
             client,
+            lang,
         )
         return _parse_search(data, query)
     except httpx.HTTPError as exc:
@@ -215,7 +234,8 @@ def search(query: str, limit: int = config.DEFAULT_SEARCH_LIMIT, *, client: http
             client.close()
 
 
-def get_article(title: str, chars: int = config.DEFAULT_EXTRACT_CHARS, *, client: httpx.Client | None = None) -> str:
+def get_article(title: str, chars: int = config.DEFAULT_EXTRACT_CHARS, *,
+                lang: str = config.DEFAULT_LANG, client: httpx.Client | None = None) -> str:
     """Fetch the plain-text extract of one Wikipedia article (intro + body).
 
     Includes article body, not just the lead: many specific facts (populations,
@@ -235,8 +255,9 @@ def get_article(title: str, chars: int = config.DEFAULT_EXTRACT_CHARS, *, client
                 "redirects": 1,
             },
             client,
+            lang,
         )
-        return _parse_extract(data, title)
+        return _parse_extract(data, title, lang)
     except httpx.HTTPError as exc:
         return f"Wikipedia fetch failed: {exc}"
     finally:
@@ -256,14 +277,14 @@ def _truncate(items: list[str]) -> tuple[list[str], str]:
 
 
 def search_many(queries: list[str], limit: int = config.DEFAULT_SEARCH_LIMIT, *,
-                client: httpx.Client | None = None) -> str:
+                lang: str = config.DEFAULT_LANG, client: httpx.Client | None = None) -> str:
     """Run several searches in parallel; return labeled, concatenated results."""
     queries, note = _truncate(queries)
     owns = client is None
     client = client or _make_client()
     try:
         with ThreadPoolExecutor(max_workers=config.MAX_CONCURRENCY) as pool:
-            results = list(pool.map(lambda q: search(q, limit, client=client), queries))
+            results = list(pool.map(lambda q: search(q, limit, lang=lang, client=client), queries))
     finally:
         if owns:
             client.close()
@@ -272,14 +293,14 @@ def search_many(queries: list[str], limit: int = config.DEFAULT_SEARCH_LIMIT, *,
 
 
 def get_articles(titles: list[str], chars: int = config.DEFAULT_EXTRACT_CHARS, *,
-                 client: httpx.Client | None = None) -> str:
+                 lang: str = config.DEFAULT_LANG, client: httpx.Client | None = None) -> str:
     """Fetch several articles in parallel; return labeled, concatenated results."""
     titles, note = _truncate(titles)
     owns = client is None
     client = client or _make_client()
     try:
         with ThreadPoolExecutor(max_workers=config.MAX_CONCURRENCY) as pool:
-            results = list(pool.map(lambda t: get_article(t, chars, client=client), titles))
+            results = list(pool.map(lambda t: get_article(t, chars, lang=lang, client=client), titles))
     finally:
         if owns:
             client.close()
@@ -290,20 +311,21 @@ def get_articles(titles: list[str], chars: int = config.DEFAULT_EXTRACT_CHARS, *
 def dispatch(tool_input: dict, *, client: httpx.Client | None = None) -> str:
     """Route a tool-call payload to the right action. Returns a readable string."""
     action = tool_input.get("action")
+    lang = tool_input.get("lang") or config.DEFAULT_LANG
     if action == "search":
         queries = tool_input.get("queries")
         if queries:
-            return search_many(queries, tool_input.get("limit", config.DEFAULT_SEARCH_LIMIT), client=client)
+            return search_many(queries, tool_input.get("limit", config.DEFAULT_SEARCH_LIMIT), lang=lang, client=client)
         query = tool_input.get("query")
         if not query:
             return "Error: action='search' requires a 'query' or 'queries'."
-        return search(query, tool_input.get("limit", config.DEFAULT_SEARCH_LIMIT), client=client)
+        return search(query, tool_input.get("limit", config.DEFAULT_SEARCH_LIMIT), lang=lang, client=client)
     if action == "get_article":
         titles = tool_input.get("titles")
         if titles:
-            return get_articles(titles, tool_input.get("chars", config.DEFAULT_EXTRACT_CHARS), client=client)
+            return get_articles(titles, tool_input.get("chars", config.DEFAULT_EXTRACT_CHARS), lang=lang, client=client)
         title = tool_input.get("title")
         if not title:
             return "Error: action='get_article' requires a 'title' or 'titles'."
-        return get_article(title, tool_input.get("chars", config.DEFAULT_EXTRACT_CHARS), client=client)
+        return get_article(title, tool_input.get("chars", config.DEFAULT_EXTRACT_CHARS), lang=lang, client=client)
     return f"Error: unknown action '{action}'. Use 'search' or 'get_article'."

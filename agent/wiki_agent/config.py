@@ -16,8 +16,11 @@ AGENT_MODEL = "claude-haiku-4-5"
 MAX_TOKENS = 2048
 DEFAULT_MAX_STEPS = 6
 
-# MediaWiki API.
-WIKI_API = "https://en.wikipedia.org/w/api.php"
+# MediaWiki API. Wikipedia has a per-language edition; the tool can query any of
+# them by language code (e.g. hu, is, et). WIKI_API is the English default.
+WIKI_API_TEMPLATE = "https://{lang}.wikipedia.org/w/api.php"
+DEFAULT_LANG = "en"
+WIKI_API = WIKI_API_TEMPLATE.format(lang=DEFAULT_LANG)
 # Wikimedia policy requires a descriptive User-Agent with contact info and the
 # underlying library/version. A compliant UA grants the 200 req/min tier
 # (vs 10 req/min for a generic/empty one).

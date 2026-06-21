@@ -62,7 +62,7 @@ def test_dispatch_unknown_action():
 def test_dispatch_routes_search(monkeypatch):
     captured = {}
 
-    def fake_search(query, limit, *, client=None):
+    def fake_search(query, limit, *, lang=wikipedia.config.DEFAULT_LANG, client=None):
         captured["query"] = query
         captured["limit"] = limit
         return "results"
@@ -74,7 +74,7 @@ def test_dispatch_routes_search(monkeypatch):
 
 
 def test_dispatch_routes_get_article(monkeypatch):
-    monkeypatch.setattr(wikipedia, "get_article", lambda title, chars, *, client=None: f"got:{title}:{chars}")
+    monkeypatch.setattr(wikipedia, "get_article", lambda title, chars, *, lang=config.DEFAULT_LANG, client=None: f"got:{title}:{chars}")
     out = wikipedia.dispatch({"action": "get_article", "title": "Cat", "chars": 200})
     assert out == "got:Cat:200"
 
@@ -186,7 +186,7 @@ def test_truncate_no_note_within_limit():
 def test_search_many_fans_out_in_order_with_shared_client(monkeypatch):
     calls = []
 
-    def fake_search(q, limit, *, client=None):
+    def fake_search(q, limit, *, lang=config.DEFAULT_LANG, client=None):
         calls.append((q, limit, client))
         return f"R:{q}"
 
@@ -199,7 +199,7 @@ def test_search_many_fans_out_in_order_with_shared_client(monkeypatch):
 
 
 def test_get_articles_fans_out(monkeypatch):
-    monkeypatch.setattr(wikipedia, "get_article", lambda t, chars, *, client=None: f"A:{t}:{chars}")
+    monkeypatch.setattr(wikipedia, "get_article", lambda t, chars, *, lang=config.DEFAULT_LANG, client=None: f"A:{t}:{chars}")
     out = wikipedia.get_articles(["X", "Y"], 100, client="shared")
     assert "=== article: 'X' ===\nA:X:100" in out
     assert "A:Y:100" in out
@@ -207,26 +207,26 @@ def test_get_articles_fans_out(monkeypatch):
 
 def test_search_many_truncates(monkeypatch):
     monkeypatch.setattr(config, "MAX_BATCH", 2)
-    monkeypatch.setattr(wikipedia, "search", lambda q, limit, *, client=None: f"R:{q}")
+    monkeypatch.setattr(wikipedia, "search", lambda q, limit, *, lang=config.DEFAULT_LANG, client=None: f"R:{q}")
     out = wikipedia.search_many(["a", "b", "c", "d"], client="s")
     assert "R:a" in out and "R:b" in out and "R:c" not in out
     assert "2 extra" in out
 
 
 def test_dispatch_routes_search_many(monkeypatch):
-    monkeypatch.setattr(wikipedia, "search_many", lambda qs, limit, *, client=None: f"many:{qs}:{limit}")
+    monkeypatch.setattr(wikipedia, "search_many", lambda qs, limit, *, lang=config.DEFAULT_LANG, client=None: f"many:{qs}:{limit}")
     out = wikipedia.dispatch({"action": "search", "queries": ["a", "b"], "limit": 3})
     assert out == "many:['a', 'b']:3"
 
 
 def test_dispatch_routes_get_articles(monkeypatch):
-    monkeypatch.setattr(wikipedia, "get_articles", lambda ts, chars, *, client=None: f"arts:{ts}")
+    monkeypatch.setattr(wikipedia, "get_articles", lambda ts, chars, *, lang=config.DEFAULT_LANG, client=None: f"arts:{ts}")
     out = wikipedia.dispatch({"action": "get_article", "titles": ["X", "Y"]})
     assert out == "arts:['X', 'Y']"
 
 
 def test_dispatch_empty_queries_falls_back_to_single(monkeypatch):
-    monkeypatch.setattr(wikipedia, "search", lambda q, limit, *, client=None: f"one:{q}")
+    monkeypatch.setattr(wikipedia, "search", lambda q, limit, *, lang=config.DEFAULT_LANG, client=None: f"one:{q}")
     out = wikipedia.dispatch({"action": "search", "queries": [], "query": "z"})
     assert out == "one:z"
 
@@ -235,3 +235,65 @@ def test_schema_advertises_lists():
     props = wikipedia.TOOL_SCHEMA["input_schema"]["properties"]
     assert props["queries"]["type"] == "array"
     assert props["titles"]["type"] == "array"
+
+
+# ---------------------------------------------------------------------------
+# Multilingual: per-language Wikipedia editions
+# ---------------------------------------------------------------------------
+
+
+def test_api_url_builds_per_language_host():
+    assert wikipedia._api_url("hu") == "https://hu.wikipedia.org/w/api.php"
+    assert wikipedia._api_url("en") == "https://en.wikipedia.org/w/api.php"
+
+
+def test_schema_advertises_lang():
+    assert wikipedia.TOOL_SCHEMA["input_schema"]["properties"]["lang"]["type"] == "string"
+
+
+def test_get_requests_per_language_host(monkeypatch):
+    monkeypatch.setattr(config, "CACHE_ENABLED", False)
+    seen = {}
+
+    class CapClient:
+        def get(self, url, params=None):
+            seen["url"] = url
+            return FakeResponse(200, {"query": {"ok": True}})
+
+    wikipedia._get({"action": "query"}, CapClient(), "hu")
+    assert seen["url"] == "https://hu.wikipedia.org/w/api.php"
+
+
+def test_get_lang_does_not_collide_in_cache(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(config, "CACHE_ENABLED", True)
+    params = {"action": "query", "titles": "Budapest"}
+    en = wikipedia._get(params, FakeClient([FakeResponse(200, {"v": "en"})]), "en")
+    hu = wikipedia._get(params, FakeClient([FakeResponse(200, {"v": "hu"})]), "hu")
+    assert en == {"v": "en"} and hu == {"v": "hu"}  # distinct cache entries
+
+
+def test_search_passes_lang_to_get(monkeypatch):
+    seen = {}
+
+    def fake_get(params, client, lang=config.DEFAULT_LANG):
+        seen["lang"] = lang
+        return {"query": {"search": []}}
+
+    monkeypatch.setattr(wikipedia, "_get", fake_get)
+    wikipedia.search("x", lang="et", client="c")
+    assert seen["lang"] == "et"
+
+
+def test_dispatch_threads_lang(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(wikipedia, "get_article", lambda title, chars, *, lang=config.DEFAULT_LANG, client=None: seen.setdefault("lang", lang) or "ok")
+    wikipedia.dispatch({"action": "get_article", "title": "Reykjavík", "lang": "is"})
+    assert seen["lang"] == "is"
+
+
+def test_dispatch_defaults_lang_to_en(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(wikipedia, "search", lambda q, limit, *, lang=config.DEFAULT_LANG, client=None: seen.setdefault("lang", lang) or "ok")
+    wikipedia.dispatch({"action": "search", "query": "x"})
+    assert seen["lang"] == "en"
