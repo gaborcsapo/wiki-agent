@@ -11,8 +11,10 @@ from pathlib import Path
 from inspect_ai import Task, task
 from inspect_ai.dataset import json_dataset
 
-from .scorers import correctness_judge, used_wikipedia_tool
-from .solver import wiki_agent_solver
+# Absolute imports (not relative): Inspect loads this file by path, not as
+# `wiki_eval.tasks`, so relative imports have no package to resolve against.
+from wiki_eval.scorers import correctness_judge, used_wikipedia_tool
+from wiki_eval.solver import wiki_agent_solver
 
 _DATASETS = Path(__file__).parent / "datasets"
 
