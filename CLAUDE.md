@@ -42,6 +42,8 @@ File map:
 | `eval/wiki_eval/solver.py` | Wraps `wiki_agent.run` as an Inspect solver |
 | `eval/wiki_eval/scorers.py` | LLM-judge + custom trajectory scorers |
 | `eval/wiki_eval/tasks.py` | Benchmark registry (one `@task` each) |
+| `eval/wiki_eval/analyze_runs.py` | Post-run FRAMES breakdown from an `.eval` log: accuracy/steps/tokens + batch-usage aggregation (`python -m wiki_eval.analyze_runs`) |
+| `eval/wiki_eval/analyze_multilingual.py` | Post-run multilingual breakdown: per-category/language accuracy + failure listing (`python -m wiki_eval.analyze_multilingual`) |
 | `eval/wiki_eval/datasets/*.jsonl` | Benchmark data (`{"input", "target"}`, plus optional per-row metadata, e.g. `reference_pages` for FRAMES, `should_abstain`/`category` for abstention) |
 
 ## Development principles
@@ -94,7 +96,9 @@ uv run inspect view start --host 0.0.0.0 --port 7575   # results UI; 0.0.0.0 = r
 
 - **Anonymous "good citizenship"** is the chosen path — a compliant `User-Agent`
   (with contact + library/version) grants the 200 req/min tier; auth gives no
-  read benefit under the 2026 rules. The agent is serial by construction.
+  read benefit under the 2026 rules. A single tool call is serial; a batched
+  (`queries`/`titles`) call fans out at most `MAX_CONCURRENCY` (3) requests in
+  parallel — a deliberately conservative cap well under the rate tier.
 - `_get` sends `maxlag=5`, retries 429/503 and in-200 `maxlag` bodies honoring
   `Retry-After` (else ≥5s then exponential). All knobs live in `config.py`.
 - Responses are cached as raw JSON in `agent/.wiki_cache/` (gitignored, no

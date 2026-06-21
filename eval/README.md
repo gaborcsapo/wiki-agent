@@ -1,8 +1,9 @@
 # wiki-eval
 
 An [Inspect AI](https://inspect.aisi.org.uk/) evaluation suite for the Wikipedia
-agent. It measures how well the agent answers questions, starting with a
-10-example factual-QA benchmark graded by an LLM-as-judge.
+agent. It measures how well the agent answers questions across several
+benchmarks — factual QA, multi-hop FRAMES, low-resource multilingual QA, and
+abstention — graded by an LLM-as-judge plus code-based trajectory scorers.
 
 ## Decoupling
 
@@ -37,6 +38,8 @@ bars).
 | `wiki_eval/scorers.py` | LLM-judge correctness + custom trajectory scorer |
 | `wiki_eval/tasks.py` | Benchmark registry (one `@task` per benchmark) |
 | `wiki_eval/datasets/factual_qa.jsonl` | 10 hand-written QA examples |
+| `wiki_eval/datasets/frames.jsonl` | 100 multi-hop FRAMES questions with `reference_pages` |
+| `wiki_eval/datasets/multilingual_qa.jsonl` | 30 low-resource multilingual QA questions |
 | `wiki_eval/datasets/abstention.jsonl` | 30 should-abstain questions + 6 answerable controls |
 
 ## Setup
@@ -69,6 +72,40 @@ uv run inspect eval wiki_eval/tasks.py@factual_qa \
 ```
 
 ## Benchmarks
+
+### factual_qa
+
+10 hand-written factual questions graded by the LLM-judge `correctness_judge`,
+plus the `used_wikipedia_tool` trajectory check.
+
+```bash
+uv run inspect eval wiki_eval/tasks.py@factual_qa --model anthropic/claude-haiku-4-5
+```
+
+### frames
+
+100 multi-hop questions from the FRAMES benchmark. Each row carries
+`reference_pages` (the English Wikipedia articles needed to answer), scored by
+`correctness_judge` + `used_wikipedia_tool` + `retrieval_grounding` (recall of
+the read pages vs. the reference set). Use `scripts/build_frames.py` to
+(re)build the dataset and `python -m wiki_eval.analyze_runs <log.eval>` for a
+post-run breakdown.
+
+```bash
+uv run inspect eval wiki_eval/tasks.py@frames --model anthropic/claude-haiku-4-5
+```
+
+### multilingual_qa
+
+30 low-resource multilingual QA questions whose facts are often only on (or
+richer on) a non-English Wikipedia edition, exercising the tool's `lang`
+parameter. Scored by `multilingual_correctness` (with per-category/language
+metrics) + `used_wikipedia_tool`; `python -m wiki_eval.analyze_multilingual
+<log.eval>` lists failures and the language editions the agent queried.
+
+```bash
+uv run inspect eval wiki_eval/tasks.py@multilingual_qa --model anthropic/claude-haiku-4-5
+```
 
 ### WikiAgentAbstention
 
