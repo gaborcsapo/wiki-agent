@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import html
 import re
+import time
 
 import httpx
 
-from . import config
+from . import cache, config
 
 # ---------------------------------------------------------------------------
 # Tool schema (passed to the Claude API)
@@ -112,12 +113,64 @@ def _parse_extract(data: dict, title: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+_RETRY_STATUS = {429, 503}
+
+
+def _sleep(seconds: float) -> None:
+    """Indirection so tests can monkeypatch out real sleeping."""
+    time.sleep(seconds)
+
+
+def _retry_delay(attempt: int, retry_after: str | None) -> float:
+    """Seconds to wait before a retry.
+
+    Honor a numeric ``Retry-After`` header; otherwise exponential backoff
+    floored at MIN_RETRY_WAIT and capped at BACKOFF_CAP.
+    """
+    if retry_after:
+        try:
+            return max(0.0, float(retry_after))
+        except ValueError:
+            pass
+    backoff = config.BACKOFF_BASE * (2 ** attempt)
+    return min(config.BACKOFF_CAP, max(config.MIN_RETRY_WAIT, backoff))
+
+
+def _is_maxlag(data: dict) -> bool:
+    """True if a 200 body is actually a maxlag rejection."""
+    return data.get("error", {}).get("code") == "maxlag"
+
+
 def _get(params: dict, client: httpx.Client) -> dict:
-    """Perform a single MediaWiki API GET request and return parsed JSON."""
-    base = {"format": "json", "formatversion": 2}
-    response = client.get(config.WIKI_API, params={**base, **params})
-    response.raise_for_status()
-    return response.json()
+    """MediaWiki API GET with disk cache + Retry-After/exponential backoff.
+
+    ``params`` are the semantic query params; transport params (format,
+    formatversion, maxlag) are added here and excluded from the cache key so
+    cache hits stay stable across runs.
+    """
+    cached = cache.get(params)
+    if cached is not None:
+        return cached
+
+    base = {"format": "json", "formatversion": 2, "maxlag": config.MAXLAG}
+    for attempt in range(config.MAX_RETRIES + 1):
+        response = client.get(config.WIKI_API, params={**base, **params})
+        if response.status_code in _RETRY_STATUS:
+            if attempt < config.MAX_RETRIES:
+                _sleep(_retry_delay(attempt, response.headers.get("Retry-After")))
+                continue
+            response.raise_for_status()  # exhausted -> raise to the caller
+        response.raise_for_status()
+        data = response.json()
+        if _is_maxlag(data):
+            if attempt < config.MAX_RETRIES:
+                _sleep(_retry_delay(attempt, response.headers.get("Retry-After")))
+                continue
+            return data  # exhausted maxlag -> parser renders a benign message
+        cache.set(params, data)
+        return data
+
+    raise httpx.HTTPError("retries exhausted")  # pragma: no cover
 
 
 def _make_client() -> httpx.Client:

@@ -1,6 +1,9 @@
 """Unit tests for the Wikipedia tool — pure parsers and routing, no network."""
 
-from wiki_agent import wikipedia
+import httpx
+import pytest
+
+from wiki_agent import config, wikipedia
 
 
 def test_parse_search_formats_numbered_list_and_strips_html():
@@ -74,3 +77,90 @@ def test_dispatch_routes_get_article(monkeypatch):
     monkeypatch.setattr(wikipedia, "get_article", lambda title, chars, *, client=None: f"got:{title}:{chars}")
     out = wikipedia.dispatch({"action": "get_article", "title": "Cat", "chars": 200})
     assert out == "got:Cat:200"
+
+
+# ---------------------------------------------------------------------------
+# Backoff + cache in _get (fakes only, no network / no real sleeps)
+# ---------------------------------------------------------------------------
+
+
+class FakeResponse:
+    def __init__(self, status_code=200, json_data=None, headers=None):
+        self.status_code = status_code
+        self._json = json_data or {}
+        self.headers = headers or {}
+
+    def json(self):
+        return self._json
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise httpx.HTTPError(f"HTTP {self.status_code}")
+
+
+class FakeClient:
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = 0
+
+    def get(self, url, params=None):
+        self.calls += 1
+        return self._responses.pop(0)
+
+
+def test_retry_delay_honors_numeric_retry_after():
+    assert wikipedia._retry_delay(0, "12") == 12.0
+
+
+def test_retry_delay_exponential_floor_and_cap():
+    assert wikipedia._retry_delay(0, None) == config.MIN_RETRY_WAIT
+    assert wikipedia._retry_delay(10, None) == config.BACKOFF_CAP
+
+
+def test_is_maxlag():
+    assert wikipedia._is_maxlag({"error": {"code": "maxlag"}}) is True
+    assert wikipedia._is_maxlag({"query": {}}) is False
+
+
+def test_get_retries_on_429_then_succeeds(monkeypatch):
+    monkeypatch.setattr(config, "CACHE_ENABLED", False)
+    slept = []
+    monkeypatch.setattr(wikipedia, "_sleep", lambda s: slept.append(s))
+    client = FakeClient([
+        FakeResponse(429, headers={"Retry-After": "3"}),
+        FakeResponse(200, {"query": {"ok": True}}),
+    ])
+    data = wikipedia._get({"action": "query"}, client)
+    assert data == {"query": {"ok": True}}
+    assert slept == [3.0]
+    assert client.calls == 2
+
+
+def test_get_retries_on_maxlag_body(monkeypatch):
+    monkeypatch.setattr(config, "CACHE_ENABLED", False)
+    monkeypatch.setattr(wikipedia, "_sleep", lambda s: None)
+    client = FakeClient([
+        FakeResponse(200, {"error": {"code": "maxlag"}}, {"Retry-After": "5"}),
+        FakeResponse(200, {"query": {"ok": True}}),
+    ])
+    data = wikipedia._get({"action": "query"}, client)
+    assert data == {"query": {"ok": True}}
+    assert client.calls == 2
+
+
+def test_get_raises_after_exhausting_retries(monkeypatch):
+    monkeypatch.setattr(config, "CACHE_ENABLED", False)
+    monkeypatch.setattr(wikipedia, "_sleep", lambda s: None)
+    client = FakeClient([FakeResponse(503) for _ in range(config.MAX_RETRIES + 1)])
+    with pytest.raises(httpx.HTTPError):
+        wikipedia._get({"action": "query"}, client)
+
+
+def test_get_served_from_cache_skips_http(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(config, "CACHE_ENABLED", True)
+    client = FakeClient([FakeResponse(200, {"query": {"v": 1}})])
+    first = wikipedia._get({"action": "query", "titles": "Cat"}, client)
+    assert first == {"query": {"v": 1}} and client.calls == 1
+    second = wikipedia._get({"action": "query", "titles": "Cat"}, FakeClient([]))
+    assert second == {"query": {"v": 1}}  # served from cache, no pop from empty
