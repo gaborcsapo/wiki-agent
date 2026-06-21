@@ -9,6 +9,7 @@ step cap is hit). Every turn is recorded in a Trajectory.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 import anthropic
 
@@ -51,15 +52,22 @@ def run(
     model: str | None = None,
     max_steps: int = config.DEFAULT_MAX_STEPS,
     client: anthropic.Anthropic | None = None,
+    on_step: Callable[[Step], None] | None = None,
 ) -> AgentResult:
     """Answer ``question`` with the Wikipedia agent.
 
-    ``client`` is injectable so tests can pass a fake. Returns an AgentResult
-    carrying the final answer and the full trajectory.
+    ``client`` is injectable so tests can pass a fake. ``on_step`` is invoked
+    once per recorded step, in order, enabling live step-by-step rendering.
+    Returns an AgentResult carrying the final answer and the full trajectory.
     """
     model = model or config.AGENT_MODEL
     client = client or anthropic.Anthropic()
     traj = Trajectory(question=question, model=model)
+
+    def emit(step: Step) -> None:
+        traj.add(step)
+        if on_step is not None:
+            on_step(step)
 
     messages: list[dict] = [{"role": "user", "content": question}]
 
@@ -77,7 +85,7 @@ def run(
         text = _final_text(response.content)
         usage = getattr(response, "usage", None)
         if text:
-            traj.add(
+            emit(
                 Step(
                     kind=ASSISTANT_TEXT,
                     content=text,
@@ -89,7 +97,7 @@ def run(
         if response.stop_reason != "tool_use":
             # Claude is done — this turn's text is the final answer.
             traj.answer = text
-            traj.add(Step(kind=FINAL_ANSWER, content=text))
+            emit(Step(kind=FINAL_ANSWER, content=text))
             return AgentResult(answer=text, trajectory=traj, steps=step)
 
         # Echo the assistant turn (including tool_use blocks) back into history.
@@ -100,9 +108,9 @@ def run(
         for block in response.content:
             if block.type != "tool_use":
                 continue
-            traj.add(Step(kind=TOOL_CALL, tool_name=block.name, tool_input=dict(block.input)))
+            emit(Step(kind=TOOL_CALL, tool_name=block.name, tool_input=dict(block.input)))
             result = wikipedia.dispatch(block.input)
-            traj.add(Step(kind=TOOL_RESULT, content=result, tool_name=block.name))
+            emit(Step(kind=TOOL_RESULT, content=result, tool_name=block.name))
             tool_results.append(
                 {"type": "tool_result", "tool_use_id": block.id, "content": result}
             )
@@ -111,5 +119,5 @@ def run(
     # Step cap reached without a final answer.
     answer = "I could not reach a conclusive answer within the step limit."
     traj.answer = answer
-    traj.add(Step(kind=FINAL_ANSWER, content=answer))
+    emit(Step(kind=FINAL_ANSWER, content=answer))
     return AgentResult(answer=answer, trajectory=traj, steps=max_steps)

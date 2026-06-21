@@ -69,6 +69,23 @@ def test_tool_use_then_answer():
     assert len(client.calls) == 2
 
 
+def test_on_step_callback_fires_per_recorded_step():
+    client = FakeClient(
+        [
+            _response([_tool_block("wikipedia", {"action": "search", "query": "moon"})], "tool_use"),
+            _response([_text_block("Neil Armstrong.")], "end_turn"),
+        ]
+    )
+    seen = []
+    result = agent.run("Who walked on the moon?", client=client, on_step=seen.append)
+
+    # Same steps the trajectory recorded, in the same order.
+    assert [s.kind for s in seen] == [s.kind for s in result.trajectory.steps]
+    assert seen[-1].kind == FINAL_ANSWER
+    # The objects handed to the callback ARE the recorded steps.
+    assert seen == result.trajectory.steps
+
+
 def test_respects_max_steps():
     # Always asks for a tool — should stop at the cap, not loop forever.
     looping = [
