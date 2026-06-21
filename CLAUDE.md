@@ -42,6 +42,7 @@ File map:
 | `eval/wiki_eval/solver.py` | Wraps `wiki_agent.run` as an Inspect solver |
 | `eval/wiki_eval/scorers.py` | LLM-judge + custom trajectory scorers |
 | `eval/wiki_eval/tasks.py` | Benchmark registry (one `@task` each) |
+| `eval/run_pinned.py` | **Canonical runner**: pins the agent model in-process AND labels the run with it, so `inspect view` shows the agent's Model/Tokens (not the judge's). Use this to run a specific tier. |
 | `eval/wiki_eval/analyze_runs.py` | Post-run FRAMES breakdown from an `.eval` log: accuracy/steps/tokens + batch-usage aggregation (`python -m wiki_eval.analyze_runs`) |
 | `eval/wiki_eval/analyze_multilingual.py` | Post-run multilingual breakdown: per-category/language accuracy + failure listing (`python -m wiki_eval.analyze_multilingual`) |
 | `eval/wiki_eval/datasets/*.jsonl` | Benchmark data (`{"input", "target"}`, plus optional per-row metadata, e.g. `reference_pages` for FRAMES, `should_abstain`/`category` for abstention) |
@@ -78,8 +79,14 @@ uv sync
 uv run pytest
 uv run inspect eval wiki_eval/tasks.py@factual_qa --model anthropic/claude-haiku-4-5
 uv run inspect eval wiki_eval/tasks.py@multilingual_qa --model anthropic/claude-haiku-4-5  # low-resource multilingual QA
+# Tier-accurate run (correct Model/Tokens in `inspect view`): pin the agent model.
+uv run python run_pinned.py frames claude-sonnet-4-6 100   # <task> <agent-model> <limit>
 uv run inspect view start --host 0.0.0.0 --port 7575   # results UI; 0.0.0.0 = reachable over Tailscale
 ```
+
+Note: `inspect eval ... --model X` only sets the run's *label* to X — the agent
+still runs at `config.AGENT_MODEL`, and the judge always uses `JUDGE_MODEL`. To
+run (and correctly log) a specific agent tier, use `run_pinned.py`.
 
 ## Models & environment
 

@@ -62,14 +62,24 @@ export ANTHROPIC_API_KEY=sk-ant-...
 uv run inspect eval wiki_eval/tasks.py@factual_qa --model anthropic/claude-haiku-4-5
 ```
 
-(The `--model` flag is what the LLM-judge falls back to if a grader role isn't
-set; the agent uses its own model from `wiki_eval/config.py`.) To use a stronger
-judge:
+The agent calls Claude directly, so it never goes through Inspect's `--model`;
+that flag only sets the run's *label* and the judge's fallback. The agent runs at
+`config.AGENT_MODEL` (default Haiku), and every scorer pins the judge to
+`JUDGE_MODEL` explicitly.
+
+### Running a specific agent tier (recommended)
+
+To run — and correctly log — the agent at a chosen tier, use `run_pinned.py`. It
+pins the agent model in-process *and* labels the run with it, so the Inspect UI's
+**Model** and **Tokens** columns reflect the agent (not the judge):
 
 ```bash
-uv run inspect eval wiki_eval/tasks.py@factual_qa \
-  --model-role grader=anthropic/claude-sonnet-4-6
+uv run python run_pinned.py <task> <agent-model> <limit>
+uv run python run_pinned.py frames claude-sonnet-4-6 100
+uv run python run_pinned.py multilingual_qa claude-haiku-4-5 30
 ```
+
+To use a stronger judge instead, change `JUDGE_MODEL` in `wiki_eval/config.py`.
 
 ## Benchmarks
 
