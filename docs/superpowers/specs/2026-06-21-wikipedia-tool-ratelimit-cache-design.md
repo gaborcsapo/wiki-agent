@@ -164,6 +164,40 @@ Simple runtime toggles; no plumbing through `agent.run`.
   only exercised inside the benchmark for comparison).
 - No changes to `eval/` or the agent↔eval boundary.
 
+## Empirical results (run 2026-06-21)
+
+`python -m wiki_agent.ratelimit_bench`, anonymous, compliant UA + gzip, ≤500
+req/setup in 2 s windows, 60 s cooldown between setups:
+
+| setup | sent | ok | throttled (429) | maxlag rej. | req/s | 1st throttle |
+|-------|-----:|---:|----:|----:|-----:|----:|
+| serial, no maxlag | 500 | 496 | 4 | 0 | 3.37 | #347 |
+| serial, maxlag=5  | 268 | 249 | 19 | 0 | 3.27 | #250 |
+| conc=3, no maxlag | 225 | 200 | 25 | 0 | 6.43 | #201 |
+| conc=3, maxlag=5  | 231 | 200 | 31 | 0 | 6.39 | #201 |
+
+**Recommended (auto-picked): serial** — it sustained ~3.3 successful req/s with
+<1% throttling and completed the full budget; concurrency=3 ~doubled throughput
+but tripped throttling far sooner (early-stopped). This matches the docs' 200
+req/min (~3.3 req/s) tier and the agent's serial-by-construction design.
+
+**Caveats (honest reading):**
+- **Ordering confound:** first-throttle index falls monotonically (347→250→201→201),
+  so later setups inherited a partly-depleted rolling rate budget — 60 s cooldown
+  didn't fully reset it. The maxlag-vs-not difference is within this artifact, **not**
+  caused by maxlag.
+- **maxlag was neutral here:** 0 maxlag rejections across all runs (replica lag was
+  low), so the experiment can't measure its benefit. We keep `maxlag=5` as
+  zero-cost good-citizenship insurance for high-lag incidents, per the docs — it
+  is an availability safeguard, not a throughput lever.
+- A cleaner comparison would randomize setup order and use longer cooldowns, at
+  the cost of more live hammering. Not done (kept within the agreed budget).
+
+**Net:** the shipped config (compliant UA, gzip, serial, `maxlag=5`,
+Retry-After/exponential backoff) is the best anonymous setup. The agent's serial
+loop already operates in the low-throttle regime; the 4 stray 429s seen even in
+the best run are exactly what the new backoff retries transparently.
+
 ## Files touched
 
 | Path | Change |
