@@ -6,7 +6,7 @@ several Wikipedia lookups. This list is the single source of truth the recorder
 """
 
 QUESTIONS = [
-    "Who succeeded the English monarch who reigned during the Great Fire of London?",
+    "Who was the immediate successor of the U.S. president in office during the Cuban Missile Crisis?",
     "What is the capital of the country that hosted the 1992 Summer Olympics?",
     "Which planet did Voyager 1 fly by first after its launch?",
     "In which city was the architect of the Sagrada Família born?",

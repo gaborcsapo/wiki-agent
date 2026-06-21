@@ -1,0 +1,61 @@
+{
+  "question": "Which planet did Voyager 1 fly by first after its launch?",
+  "model": "claude-haiku-4-5",
+  "steps": [
+    {
+      "kind": "tool_call",
+      "content": "",
+      "tool_name": "wikipedia",
+      "tool_input": {
+        "action": "search",
+        "query": "Voyager 1 launch planets"
+      },
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "kind": "tool_result",
+      "content": "Search results for 'Voyager 1 launch planets':\n1. Voyager 2 — Voyager 2 is a space probe launched by NASA on August 20, 1977, as a part of the Voyager program. It was launched on a trajectory towards the gas giants\n2. Voyager 1 — Voyager 1 is a space probe launched by NASA on September 5, 1977, as part of the Voyager program, to study the outer Solar System and the interstellar\n3. List of missions to the outer planets — Voyager 2, has visited Uranus and Neptune. The nine missions include two, Ulysses and New Horizons, whose primary objectives were not outer planets,\n4. Voyager program — The Voyager program is an American scientific program that employs two interstellar probes, Voyager 1 and Voyager 2. They were launched in 1977 to take\n5. Voyager Golden Record — The Voyager Golden Records are two identical phonograph records, with one copy aboard each of the two Voyager spacecraft launched in 1977. The records",
+      "tool_name": "wikipedia",
+      "tool_input": null,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "kind": "tool_call",
+      "content": "",
+      "tool_name": "wikipedia",
+      "tool_input": {
+        "action": "get_article",
+        "title": "Voyager 1"
+      },
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "kind": "tool_result",
+      "content": "Voyager 1\nhttps://en.wikipedia.org/wiki/Voyager_1\n\nVoyager 1 is a space probe launched by NASA on September 5, 1977, as part of the Voyager program, to study the outer Solar System and the interstellar space beyond the Sun's heliosphere. It was launched 16 days after its twin, Voyager 2. It communicates through the NASA Deep Space Network (DSN) to receive routine commands and to transmit data to Earth. Real-time distance and velocity data are provided by NASA and JPL. At a distance of 172.59 AU (25.8 billion km; 16.0 billion mi) as of March 2026, it is the most distant human-made object from Earth. Voyager 1 is also projected to reach a distance of one light day from Earth in November 2026. \nThe probe made flybys of Jupiter, Saturn, and Saturn's largest moon, Titan. NASA had a choice of either conducting a Pluto or Titan flyby. Exploration of Titan took priority because it was known to have a substantial atmosphere. Voyager 1 studied the weather, magnetic fields, and rings of the two gas giants and was the first probe to provide detailed images of their moons.\nAs part of the Voyager program and like its sister craft Voyager 2, the spacecraft's extended mission is to locate and study the regions and boundaries of the outer heliosphere...",
+      "tool_name": "wikipedia",
+      "tool_input": null,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "kind": "assistant_text",
+      "content": "Based on the Wikipedia article, **Jupiter** was the first planet that Voyager 1 flew by after its launch on September 5, 1977. The article states that \"The probe made flybys of Jupiter, Saturn, and Saturn's largest moon, Titan,\" indicating Jupiter was the first planetary encounter.",
+      "tool_name": null,
+      "tool_input": null,
+      "input_tokens": 1575,
+      "output_tokens": 70
+    },
+    {
+      "kind": "final_answer",
+      "content": "Based on the Wikipedia article, **Jupiter** was the first planet that Voyager 1 flew by after its launch on September 5, 1977. The article states that \"The probe made flybys of Jupiter, Saturn, and Saturn's largest moon, Titan,\" indicating Jupiter was the first planetary encounter.",
+      "tool_name": null,
+      "tool_input": null,
+      "input_tokens": null,
+      "output_tokens": null
+    }
+  ],
+  "answer": "Based on the Wikipedia article, **Jupiter** was the first planet that Voyager 1 flew by after its launch on September 5, 1977. The article states that \"The probe made flybys of Jupiter, Saturn, and Saturn's largest moon, Titan,\" indicating Jupiter was the first planetary encounter."
+}
