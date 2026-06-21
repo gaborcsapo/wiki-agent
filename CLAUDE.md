@@ -75,6 +75,7 @@ uv run python -m wiki_agent.ratelimit_bench  # live rate-limit comparison (opt-i
 uv sync
 uv run pytest
 uv run inspect eval wiki_eval/tasks.py@factual_qa --model anthropic/claude-haiku-4-5
+uv run inspect eval wiki_eval/tasks.py@multilingual_qa --model anthropic/claude-haiku-4-5  # low-resource multilingual QA
 uv run inspect view start --host 0.0.0.0 --port 7575   # results UI; 0.0.0.0 = reachable over Tailscale
 ```
 
@@ -118,7 +119,8 @@ agent's work:**
 ## Extending
 
 - **New benchmark:** add `eval/wiki_eval/datasets/<name>.jsonl` + a `@task` in
-  `tasks.py`.
+  `tasks.py` (with a record->Sample converter if rows carry metadata, as in
+  `frames` and `multilingual_qa`).
 - **New metric/scorer:** add a `@scorer` in `scorers.py` and include it in the
   task's scorer list.
 - **Tool changes:** keep parsing pure and unit-tested; the tool returns readable
