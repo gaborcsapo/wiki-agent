@@ -43,6 +43,12 @@ bars).
 ```bash
 cd eval
 uv sync
+```
+
+Provide your Anthropic API key either by editing `eval/.env` (gitignored —
+Inspect AI auto-loads it) or by exporting it:
+
+```bash
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 

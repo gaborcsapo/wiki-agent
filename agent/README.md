@@ -31,6 +31,12 @@ evaluation suite depends on.
 ```bash
 cd agent
 uv sync
+```
+
+Provide your Anthropic API key either by editing `agent/.env` (gitignored — the
+CLI auto-loads it) or by exporting it:
+
+```bash
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 

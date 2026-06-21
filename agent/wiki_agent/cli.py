@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 import click
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -58,6 +59,8 @@ def _render(traj: Trajectory) -> None:
 @click.option("--save/--no-save", default=True, show_default=True, help="Save the trajectory JSON to traces/.")
 def main(question: str, model: str | None, max_steps: int, save: bool) -> None:
     """Answer QUESTION with the Wikipedia agent and show its trajectory."""
+    # Load ANTHROPIC_API_KEY from a .env file (cwd or a parent) if present.
+    load_dotenv()
     result = run(question, model=model, max_steps=max_steps)
     _render(result.trajectory)
     console.print(Panel(Text(result.answer, style="bold magenta"), title="✅ Final answer", border_style="magenta"))
