@@ -48,6 +48,17 @@ class Trajectory:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Trajectory":
+        """Rebuild a Trajectory from the dict produced by ``to_dict``."""
+        steps = [Step(**step) for step in data.get("steps", [])]
+        return cls(
+            question=data["question"],
+            model=data["model"],
+            steps=steps,
+            answer=data.get("answer", ""),
+        )
+
     def save(self, directory: str | Path) -> Path:
         """Write the trajectory to ``<directory>/<timestamp>.json`` and return the path."""
         directory = Path(directory)

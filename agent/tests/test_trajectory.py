@@ -18,6 +18,23 @@ def test_to_dict_round_trips_through_json():
     assert restored["steps"][0]["tool_input"] == {"action": "search", "query": "q"}
 
 
+def test_from_dict_round_trips_to_dict():
+    from wiki_agent.trajectory import ASSISTANT_TEXT, TOOL_RESULT
+
+    traj = Trajectory(question="Q?", model="claude-haiku-4-5")
+    traj.add(Step(kind=ASSISTANT_TEXT, content="thinking", input_tokens=10, output_tokens=5))
+    traj.add(Step(kind=TOOL_CALL, tool_name="wikipedia", tool_input={"action": "search", "query": "q"}))
+    traj.add(Step(kind=TOOL_RESULT, content="result text", tool_name="wikipedia"))
+    traj.add(Step(kind=FINAL_ANSWER, content="A."))
+    traj.answer = "A."
+
+    restored = Trajectory.from_dict(traj.to_dict())
+
+    assert restored == traj
+    assert restored.steps[1].tool_input == {"action": "search", "query": "q"}
+    assert restored.steps[0].output_tokens == 5
+
+
 def test_save_writes_json_file(tmp_path):
     traj = Trajectory(question="Q?", model="m")
     traj.add(Step(kind=FINAL_ANSWER, content="hi"))
