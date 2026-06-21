@@ -81,13 +81,12 @@ uv run inspect view start --host 0.0.0.0 --port 7575   # results UI; 0.0.0.0 = r
 
 ## Models & environment
 
-- Default model is **Sonnet** (`claude-sonnet-4-6`) — FRAMES hill-climbing showed
-  it lifts correctness ~0.55 → ~0.75 over Haiku at ~1.5× latency (see
-  `docs/hill-climbing-report.md`). Switch
-  `AGENT_MODEL` back to `claude-haiku-4-5` in `config.py` for the cheaper/faster
-  tier. Optional `THINKING`/`EFFORT` knobs (`config.py`) enable adaptive thinking
-  on Sonnet — left **off** by default (no measured gain, ~2× latency). Haiku does
-  **not** support thinking/effort, so keep both `None` when on Haiku.
+- Default model is **Haiku** (`claude-haiku-4-5`) — cheap and fast for
+  development. For best quality, pass `model="claude-sonnet-4-6"` to
+  `wiki_agent.run` (or set `AGENT_MODEL` in `config.py`): FRAMES hill-climbing
+  showed Sonnet lifts correctness ~0.55 → ~0.75 at ~1.5× latency (see
+  `docs/hill-climbing-report.md`). Haiku does **not** support `thinking`/`effort`;
+  adaptive thinking on Sonnet was tested and gave no benefit, so it isn't used.
 - API key comes from `.env` (per subproject, **gitignored**) or the environment.
   `.env.example` documents the variable. Never commit a key.
 

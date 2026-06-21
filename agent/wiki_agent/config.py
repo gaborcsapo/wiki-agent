@@ -7,14 +7,10 @@ from pathlib import Path
 
 import httpx
 
-# Models. Start on Haiku; switch to "claude-sonnet-4-6" to upgrade.
-AGENT_MODEL = "claude-sonnet-4-6"
-
-# Extended thinking (Sonnet 4.6+ only — Haiku does NOT support it; leave None there).
-# THINKING = {"type": "adaptive"} enables adaptive thinking; EFFORT in
-# {"low","medium","high","max"} tunes its depth (the modern "thinking budget").
-THINKING: dict | None = None
-EFFORT: str | None = None
+# Models. Default to Haiku for cheap, fast development; pass
+# model="claude-sonnet-4-6" (or set this) for best quality — FRAMES correctness
+# ~0.55 -> ~0.75. See docs/hill-climbing-report.md.
+AGENT_MODEL = "claude-haiku-4-5"
 
 # Claude request limits.
 MAX_TOKENS = 2048

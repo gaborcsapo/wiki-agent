@@ -33,15 +33,16 @@ The settings the agent ships with today (all in `agent/wiki_agent/`).
 
 | Setting | Value | Where | Why |
 |--------|-------|-------|-----|
-| Agent model | `claude-sonnet-4-6` | `config.py` `AGENT_MODEL` | +0.20 over Haiku (R2) |
+| Agent model | `claude-haiku-4-5` (default) | `config.py` `AGENT_MODEL` | cheap/fast for dev |
+| — quality lever | `claude-sonnet-4-6` on demand | `run(model=...)` | +0.20 correctness (R2) |
 | Step budget | `max_steps=20` | `eval/.../tasks.py` `frames()` | FRAMES needs 2–15 article reads (R1) |
 | Article fetch | body, `exchars=4000` | `wikipedia.get_article` | facts live below the lead (R1) |
 | Budget-exhaustion | forced final answer | `agent.run` | no canned non-answers (R1) |
 | System prompt | decisive v2 | `agent.SYSTEM_PROMPT` | stop looping, commit (R1) |
-| Thinking / effort | **off** (`None`) | `config.py` | no gain, ~2× latency (R2) |
 
-**Score on the 20-sample FRAMES subset:** correctness ≈ **0.75**, grounding
-recall ≈ 0.50.
+**Score on the 20-sample FRAMES subset:** Haiku default ≈ **0.55**; Sonnet ≈
+**0.75**. Grounding recall ≈ 0.50. (Extended thinking was tested and is not used
+— no gain, ~2× latency; see R2.)
 
 ---
 
@@ -106,8 +107,9 @@ fact wasn't there (fixed by fetching the body). Net **0.30 → 0.55**.
 thinking variants). Everything meant to add *more reasoning* was redundant —
 the multi-step tool loop already is the reasoning scaffold, so extended thinking
 just doubled latency for no gain, and an explicit CoT prompt added nothing.
-Kept only the Sonnet swap; added gated `THINKING`/`EFFORT` knobs (off by default)
-so Sonnet thinking is a one-line opt-in for future experiments.
+Kept only the Sonnet swap as a quality lever; the thinking/CoT/format changes
+left no code behind (the temporary `THINKING`/`EFFORT` knobs were removed once
+they showed no benefit).
 
 ---
 
