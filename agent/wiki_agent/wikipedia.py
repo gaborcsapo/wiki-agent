@@ -203,7 +203,12 @@ def search(query: str, limit: int = config.DEFAULT_SEARCH_LIMIT, *, client: http
 
 
 def get_article(title: str, chars: int = config.DEFAULT_EXTRACT_CHARS, *, client: httpx.Client | None = None) -> str:
-    """Fetch the plain-text intro extract of one Wikipedia article."""
+    """Fetch the plain-text extract of one Wikipedia article (intro + body).
+
+    Includes article body, not just the lead: many specific facts (populations,
+    founding years, dates) live below the intro, so ``exintro`` is intentionally
+    omitted and the content is truncated to ``chars`` instead.
+    """
     owns = client is None
     client = client or _make_client()
     try:
@@ -212,7 +217,6 @@ def get_article(title: str, chars: int = config.DEFAULT_EXTRACT_CHARS, *, client
                 "action": "query",
                 "prop": "extracts",
                 "titles": title,
-                "exintro": 1,
                 "explaintext": 1,
                 "exchars": chars,
                 "redirects": 1,

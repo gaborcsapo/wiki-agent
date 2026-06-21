@@ -24,11 +24,22 @@ from .trajectory import (
 )
 
 SYSTEM_PROMPT = (
-    "You are a research assistant. Answer the user's question using the "
-    "`wikipedia` tool to look up facts. Search for relevant articles, read the "
-    "ones you need, and base your answer on what you find rather than prior "
-    "memory. When you have enough information, give a concise final answer in "
-    "plain text. If Wikipedia does not contain the answer, say so."
+    "You are a research assistant answering questions that often require "
+    "combining facts from several Wikipedia articles.\n\n"
+    "Work efficiently:\n"
+    "- Break the question into the specific facts you need to find.\n"
+    "- Use the `wikipedia` tool: search with precise terms, then read the most "
+    "relevant article. Prefer the single best article over many tangential ones.\n"
+    "- Base every fact on what you read, not prior memory.\n\n"
+    "Finish decisively:\n"
+    "- As soon as you have the needed facts, stop searching and answer. Do not "
+    "keep exploring once you can answer.\n"
+    "- You have a limited number of tool calls. Always commit to a final answer "
+    "before you run out — if you are not fully certain, give your best-supported "
+    "answer and briefly note the reasoning. Only say the answer is unavailable if "
+    "Wikipedia genuinely lacks it.\n"
+    "- State the final answer first, concisely and in plain text (the name, "
+    "number, or date). Do not add filler like 'Perfect!' or restate the question."
 )
 
 
@@ -116,8 +127,25 @@ def run(
             )
         messages.append({"role": "user", "content": tool_results})
 
-    # Step cap reached without a final answer.
-    answer = "I could not reach a conclusive answer within the step limit."
+    # Budget exhausted. Make one final call with NO tools so the model must
+    # commit to a best-effort answer from what it has gathered, instead of
+    # looping forever or emitting a canned non-answer (which always scores wrong).
+    response = client.messages.create(
+        model=model,
+        max_tokens=config.MAX_TOKENS,
+        system=SYSTEM_PROMPT,
+        messages=messages
+        + [
+            {
+                "role": "user",
+                "content": (
+                    "You are out of tool calls. Give your best final answer now, "
+                    "concisely and in plain text, based on what you have found."
+                ),
+            }
+        ],
+    )
+    answer = _final_text(response.content) or "I could not find a conclusive answer."
     traj.answer = answer
     emit(Step(kind=FINAL_ANSWER, content=answer))
     return AgentResult(answer=answer, trajectory=traj, steps=max_steps)

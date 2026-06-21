@@ -87,14 +87,16 @@ def test_on_step_callback_fires_per_recorded_step():
 
 
 def test_respects_max_steps():
-    # Always asks for a tool — should stop at the cap, not loop forever.
+    # Always asks for a tool — should stop at the cap, not loop forever. After the
+    # cap, one final tool-less call forces a best-effort answer.
     looping = [
         _response([_tool_block("wikipedia", {"action": "search", "query": "x"})], "tool_use")
-        for _ in range(10)
+        for _ in range(3)
     ]
-    client = FakeClient(looping)
+    forced = _response([_text_block("Best effort answer.")], "end_turn")
+    client = FakeClient(looping + [forced])
     result = agent.run("never ends", client=client, max_steps=3)
 
     assert result.steps == 3
-    assert len(client.calls) == 3
-    assert "could not reach a conclusive answer" in result.answer
+    assert len(client.calls) == 4  # 3 tool-loop steps + 1 forced final answer
+    assert result.answer == "Best effort answer."

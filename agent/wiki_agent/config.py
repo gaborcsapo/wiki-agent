@@ -42,4 +42,5 @@ CACHE_DIR = Path(__file__).resolve().parent.parent / ".wiki_cache"
 
 # Tool defaults.
 DEFAULT_SEARCH_LIMIT = 5
-DEFAULT_EXTRACT_CHARS = 1500
+# Larger extract: FRAMES-style facts often sit in the article body, not the lead.
+DEFAULT_EXTRACT_CHARS = 4000
