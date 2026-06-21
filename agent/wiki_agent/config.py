@@ -25,7 +25,7 @@ WIKI_API = WIKI_API_TEMPLATE.format(lang=DEFAULT_LANG)
 # underlying library/version. A compliant UA grants the 200 req/min tier
 # (vs 10 req/min for a generic/empty one).
 USER_AGENT = (
-    "WikiAgent/0.1 (https://github.com/gaborxcsapo/anthropic-takehome; "
+    "WikiAgent/0.1 (https://github.com/gaborcsapo/wiki-agent; "
     f"gaborxcsapo@gmail.com) python-httpx/{httpx.__version__}"
 )
 HTTP_TIMEOUT = 15.0

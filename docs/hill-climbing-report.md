@@ -59,7 +59,8 @@ The settings the agent ships with today (all in `agent/wiki_agent/`).
 | Cache | isolated disk cache, lang-keyed | `wikipedia.cache` | cheap benchmark re-runs (infra) |
 
 **Score on the 20-sample FRAMES subset:** Haiku (default, with R5 levers) ≈
-**0.65**; Sonnet ≈ **0.80**. Grounding recall ≈ 0.50. The R5 levers help Haiku
+**0.65**; Sonnet ≈ **0.80**. Grounding recall ≈ 0.50. (Full-100 confirmation:
+Haiku **0.57**, Sonnet **0.76** — see Round 6.) The R5 levers help Haiku
 (+0.10) but not Sonnet (−0.05) — see R5. (Extended thinking was tested and is not
 used — no gain, ~2× latency; see R2.)
 
@@ -217,6 +218,34 @@ was added after a concurrent edit flipped the shared `AGENT_MODEL` mid-experimen
 — it pins the agent model in-process so a run can't be skewed by on-disk changes.
 Per-run analyzers (`analyze_runs.py`, `analyze_multilingual.py`) print accuracy,
 per-category/-language breakdowns, and failure lists to drive the next cycle.
+
+### Round 6 — Full-set confirmation, Haiku vs Sonnet (judge held at Haiku)
+
+**Goal:** close the standing "confirm on the full set" item — prior rounds were
+n=20 subsets. Ran every benchmark at full size on **both** agent tiers.
+
+| Benchmark (n) | Haiku | Sonnet |
+|---|------:|-------:|
+| `frames` correctness (100) | 0.57 | **0.76** |
+| `frames` grounding recall (100) | 0.52 | 0.54 |
+| `frames` avg steps (100) | 14.7 | 10.8 |
+| `multilingual_qa` correctness (30) | 0.30 | **0.53** |
+| — `cross_lingual_fact` | 0.08 | 0.50 |
+| `abstention` accuracy (36) | **0.89** | 0.81 |
+| `abstention` F1 (36) | **0.93** | 0.87 |
+
+**Story:** the full set **confirms R2's model-upgrade win** — Sonnet is +0.19 on
+FRAMES (0.57→0.76) at full scale, *and* gets there in fewer steps (10.8 vs 14.7)
+on ~2.4× fewer tokens: the strong model fails fast, the weak one loops. Sonnet
+nearly doubles multilingual (0.30→0.53), almost all of it from comprehending the
+native page it already reached (`cross_lingual_fact` 0.08→0.50). The one
+inversion is **abstention**: Haiku beats Sonnet (F1 0.93 vs 0.87). Both have
+perfect precision (neither over-abstains on the 6 controls), but Sonnet's
+confidence makes it *answer* more unanswerable questions, so its recall is lower
+(0.77 vs 0.87) — false premises and unknowables it should have flagged. **Lesson:
+a stronger model wins every knowledge task and loses the restraint task.** (Note:
+these full-set numbers supersede the n=20 figures above; the earlier R5 levers
+were tuned on the 20-sample subset.)
 
 ---
 
