@@ -42,6 +42,12 @@ MIN_RETRY_WAIT = 5.0     # seconds (floor when no Retry-After header)
 CACHE_ENABLED = True
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".wiki_cache"
 
+# Parallel multi-query lookups: fan out a batched tool call over the cached
+# single-call path. MAX_CONCURRENCY matches Wikimedia's documented concurrent
+# ceiling; MAX_BATCH caps how many lookups one tool call may request.
+MAX_CONCURRENCY = 3
+MAX_BATCH = 10
+
 # Tool defaults.
 DEFAULT_SEARCH_LIMIT = 5
 # Larger extract: FRAMES-style facts often sit in the article body, not the lead.
