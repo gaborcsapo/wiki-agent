@@ -12,6 +12,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "datasets>=2.0",
 ]
 
 [tool.uv.sources]
