@@ -45,6 +45,23 @@ def test_pick_demo_uses_injected_rng():
     assert player.pick_demo(trajs, rng=FakeRng()).question == "B?"
 
 
+def test_record_demos_writes_one_json_per_question(tmp_path):
+    from wiki_agent.demos import record
+    from wiki_agent.agent import AgentResult
+
+    def fake_run(question):
+        return AgentResult(answer="A.", trajectory=_sample_trajectory(question), steps=1)
+
+    paths = record.record_demos(
+        tmp_path, questions=["Q-one?", "Q-two?"], run_fn=fake_run
+    )
+
+    assert [p.name for p in paths] == ["00.json", "01.json"]
+    data = json.loads((tmp_path / "00.json").read_text())
+    assert data["question"] == "Q-one?"
+    assert data["steps"][0]["kind"] == "assistant_text"
+
+
 def test_play_renders_non_final_steps_with_injected_sleep():
     traj = _sample_trajectory("Q?")
     rendered = []
