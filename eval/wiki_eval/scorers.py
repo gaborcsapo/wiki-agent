@@ -23,6 +23,7 @@ from inspect_ai.scorer import (
     Score,
     Target,
     accuracy,
+    mean,
     model_graded_qa,
     scorer,
     stderr,
@@ -95,6 +96,34 @@ def used_wikipedia_tool():
         return Score(
             value=CORRECT if used else INCORRECT,
             explanation="agent called the wikipedia tool" if used else "no tool call recorded",
+        )
+
+    return score
+
+
+@scorer(metrics={"recall": [mean(), stderr()], "precision": [mean()], "f1": [mean()]})
+def retrieval_grounding():
+    """FRAMES-only: overlap between pages the agent read and gold reference pages.
+
+    Recall is the headline (did the agent find the needed evidence?); precision
+    and F1 ride along as diagnostics. Gold pages come from the sample metadata
+    that only the FRAMES loader populates, so this scorer is inert elsewhere.
+    """
+
+    async def score(state: TaskState, target: Target) -> Score:
+        gold = {
+            slug
+            for url in state.metadata.get("reference_pages", [])
+            if (slug := _normalize_wiki_url(url))
+        }
+        steps = state.metadata.get("trajectory", {}).get("steps", [])
+        read = _fetched_pages(steps)
+        values = _grounding_scores(gold, read)
+        hits = len(gold & read)
+        return Score(
+            value=values,
+            explanation=f"{hits}/{len(gold)} gold pages read; {len(read)} read total",
+            metadata={"n_gold": len(gold), "n_read": len(read), "n_hit": hits},
         )
 
     return score

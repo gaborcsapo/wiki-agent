@@ -70,3 +70,34 @@ def test_grounding_over_exploration_lowers_precision_not_recall():
 def test_grounding_zero_and_empty_gold():
     assert _grounding_scores({"a"}, set()) == {"recall": 0.0, "precision": 0.0, "f1": 0.0}
     assert _grounding_scores(set(), {"a"}) == {"recall": 0.0, "precision": 0.0, "f1": 0.0}
+
+
+import asyncio
+from types import SimpleNamespace
+
+from wiki_eval.scorers import retrieval_grounding
+
+
+def test_retrieval_grounding_scorer_end_to_end():
+    steps = [
+        {"kind": "tool_result", "content": "Apollo 11\nhttps://en.wikipedia.org/wiki/Apollo_11\n\nbody"},
+        {"kind": "tool_result", "content": "Neil Armstrong\nhttps://en.wikipedia.org/wiki/Neil_Armstrong\n\nbody"},
+    ]
+    state = SimpleNamespace(metadata={
+        "reference_pages": [
+            "https://en.wikipedia.org/wiki/Apollo_11",
+            "https://en.wikipedia.org/wiki/Buzz_Aldrin",
+        ],
+        "trajectory": {"steps": steps},
+    })
+    score = asyncio.run(retrieval_grounding()(state, None))
+    # Read Apollo 11 (gold) + Neil Armstrong (not gold); missed Buzz Aldrin.
+    assert score.value["recall"] == 0.5
+    assert score.value["precision"] == 0.5
+    assert score.metadata["n_hit"] == 1
+
+
+def test_retrieval_grounding_handles_missing_metadata():
+    state = SimpleNamespace(metadata={})
+    score = asyncio.run(retrieval_grounding()(state, None))
+    assert score.value["recall"] == 0.0
