@@ -22,6 +22,7 @@ loop — no framework, just a hand-written loop over `messages.create`.
 | `wiki_agent/trajectory.py` | `Trajectory`/`Step` dataclasses + JSON persistence |
 | `wiki_agent/agent.py` | The loop: `run(question) -> AgentResult` |
 | `wiki_agent/cli.py` | `wiki-agent` CLI with `rich`-rendered trajectory |
+| `wiki_agent/demos/` | Demo mode: curated questions, cached trajectory JSONs, loader/player/recorder |
 
 The public API is just `run()` and `AgentResult` — the single clean boundary the
 evaluation suite depends on.
@@ -48,7 +49,19 @@ uv run wiki-agent "What is the tallest mountain on Earth?" --max-steps 8
 uv run wiki-agent "..." --no-save        # don't write a trace file
 ```
 
-Trajectories are saved to `agent/traces/<timestamp>.json` by default.
+Trajectories are saved to `agent/traces/<timestamp>.json` by default. Live runs
+render each reasoning step, tool call, and result as it happens.
+
+### Demo mode
+
+Replay a curated hard question with animated pacing — no API key required:
+
+```bash
+uv run wiki-agent demo
+```
+
+Each invocation replays one of ten cached multi-hop trajectories at random.
+Re-record the cached demos (needs an API key): `uv run wiki-agent demo --record`.
 
 ## Test
 

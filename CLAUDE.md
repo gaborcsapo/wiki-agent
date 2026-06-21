@@ -34,7 +34,8 @@ File map:
 | `agent/wiki_agent/wikipedia.py` | The one tool: schema + actions + **pure parsers split from HTTP I/O** |
 | `agent/wiki_agent/trajectory.py` | `Trajectory`/`Step` dataclasses + JSON persistence |
 | `agent/wiki_agent/agent.py` | The loop: `run() -> AgentResult` |
-| `agent/wiki_agent/cli.py` | `wiki-agent` CLI + `rich` trajectory rendering |
+| `agent/wiki_agent/cli.py` | `wiki-agent` CLI (`ask` default + `demo`) + `rich` trajectory rendering |
+| `agent/wiki_agent/demos/` | Demo mode: `questions.py`, cached `*.json` trajectories, `player.py` (load/pick/play), `record.py` |
 | `eval/wiki_eval/config.py` | Judge/agent model selection |
 | `eval/wiki_eval/solver.py` | Wraps `wiki_agent.run` as an Inspect solver |
 | `eval/wiki_eval/scorers.py` | LLM-judge + custom trajectory scorers |
@@ -62,6 +63,8 @@ Run from within the relevant subproject (each has its own venv):
 uv sync
 uv run pytest
 uv run wiki-agent "Who was the first person to walk on the Moon?"
+uv run wiki-agent demo                 # replay a cached hard question (no API key)
+uv run wiki-agent demo --record        # re-record cached demos (needs API key)
 
 # eval/
 uv sync

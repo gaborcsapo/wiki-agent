@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-wiki-agent = "wiki_agent.cli:main"
+wiki-agent = "wiki_agent.cli:cli"
 
 [dependency-groups]
 dev = [
