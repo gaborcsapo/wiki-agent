@@ -3,7 +3,7 @@
 A single tool named ``wikipedia`` exposes two actions:
 
 * ``search``      — full-text search, returns a numbered list of matching titles.
-* ``get_article`` — fetch the plain-text intro extract of one article.
+* ``get_article`` — fetch the plain-text extract of one article (intro + body).
 
 Design notes:
 * Pure formatting logic (``_parse_search``/``_parse_extract``) is separated from
@@ -30,7 +30,7 @@ from . import cache, config
 TOOL_SCHEMA = {
     "name": "wikipedia",
     "description": (
-        "Look things up on English Wikipedia. Use action='search' to find "
+        "Look things up on Wikipedia. Use action='search' to find "
         "relevant article titles from a query, then action='get_article' to "
         "read an article's introduction by its exact title. Search first when "
         "you are unsure of the exact title. To look up several things at once, "
@@ -78,7 +78,7 @@ TOOL_SCHEMA = {
             },
             "chars": {
                 "type": "integer",
-                "description": "Max characters of the article extract (default 1500).",
+                "description": "Max characters of the article extract (default 4000).",
             },
         },
         "required": ["action"],
@@ -227,7 +227,7 @@ def search(query: str, limit: int = config.DEFAULT_SEARCH_LIMIT, *,
             lang,
         )
         return _parse_search(data, query)
-    except httpx.HTTPError as exc:
+    except Exception as exc:  # noqa: BLE001 — the tool must never raise into the model loop
         return f"Wikipedia search failed: {exc}"
     finally:
         if owns:
@@ -258,7 +258,7 @@ def get_article(title: str, chars: int = config.DEFAULT_EXTRACT_CHARS, *,
             lang,
         )
         return _parse_extract(data, title, lang)
-    except httpx.HTTPError as exc:
+    except Exception as exc:  # noqa: BLE001 — the tool must never raise into the model loop
         return f"Wikipedia fetch failed: {exc}"
     finally:
         if owns:

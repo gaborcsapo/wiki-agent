@@ -116,10 +116,14 @@ def run(
             )
 
         if response.stop_reason != "tool_use":
-            # Claude is done — this turn's text is the final answer.
-            traj.answer = text
-            emit(Step(kind=FINAL_ANSWER, content=text))
-            return AgentResult(answer=text, trajectory=traj, steps=step)
+            # Claude is done — this turn's text is the final answer. Guard against
+            # an empty turn (max_tokens truncation, empty end_turn, refusal) with
+            # the same fallback the budget-exhausted path uses, so we never return
+            # a blank answer that silently scores wrong.
+            answer = text or "I could not find a conclusive answer."
+            traj.answer = answer
+            emit(Step(kind=FINAL_ANSWER, content=answer))
+            return AgentResult(answer=answer, trajectory=traj, steps=step)
 
         # Echo the assistant turn (including tool_use blocks) back into history.
         messages.append({"role": "assistant", "content": response.content})
@@ -155,7 +159,17 @@ def run(
             }
         ],
     )
+    usage = getattr(response, "usage", None)
     answer = _final_text(response.content) or "I could not find a conclusive answer."
     traj.answer = answer
-    emit(Step(kind=FINAL_ANSWER, content=answer))
+    # This final call has no preceding ASSISTANT_TEXT step, so record its token
+    # usage here — otherwise the exhausted path drops it from the accounting.
+    emit(
+        Step(
+            kind=FINAL_ANSWER,
+            content=answer,
+            input_tokens=getattr(usage, "input_tokens", None),
+            output_tokens=getattr(usage, "output_tokens", None),
+        )
+    )
     return AgentResult(answer=answer, trajectory=traj, steps=max_steps)

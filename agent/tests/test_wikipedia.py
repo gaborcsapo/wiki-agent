@@ -46,6 +46,50 @@ def test_parse_extract_no_pages():
     assert "No article found" in out
 
 
+def test_parse_extract_empty_extract():
+    data = {"query": {"pages": [{"title": "Stub", "extract": "   "}]}}
+    out = wikipedia._parse_extract(data, "Stub")
+    assert "The article 'Stub' has no readable extract." in out
+
+
+def test_parse_extract_builds_per_language_url():
+    data = {"query": {"pages": [{"title": "Budapest", "extract": "Capital of Hungary."}]}}
+    out = wikipedia._parse_extract(data, "Budapest", "hu")
+    assert "https://hu.wikipedia.org/wiki/Budapest" in out
+
+
+# ---------------------------------------------------------------------------
+# The tool must never raise into the model loop — errors become readable strings
+# ---------------------------------------------------------------------------
+
+
+def _raise(exc):
+    def _boom(*args, **kwargs):
+        raise exc
+    return _boom
+
+
+def test_search_returns_string_on_http_error(monkeypatch):
+    monkeypatch.setattr(wikipedia, "_get", _raise(httpx.HTTPError("network down")))
+    out = wikipedia.search("cats", client="c")
+    assert out.startswith("Wikipedia search failed:")
+
+
+def test_get_article_returns_string_on_http_error(monkeypatch):
+    monkeypatch.setattr(wikipedia, "_get", _raise(httpx.HTTPError("network down")))
+    out = wikipedia.get_article("Cat", client="c")
+    assert out.startswith("Wikipedia fetch failed:")
+
+
+def test_get_article_returns_string_on_malformed_json(monkeypatch):
+    # A 200 with a non-JSON body makes response.json() raise ValueError
+    # (JSONDecodeError) — not an httpx.HTTPError. It must still degrade to a
+    # readable string rather than escaping into the agent loop.
+    monkeypatch.setattr(wikipedia, "_get", _raise(ValueError("Expecting value")))
+    out = wikipedia.get_article("Cat", client="c")
+    assert out.startswith("Wikipedia fetch failed:")
+
+
 def test_dispatch_requires_query_for_search():
     assert wikipedia.dispatch({"action": "search"}).startswith("Error")
 

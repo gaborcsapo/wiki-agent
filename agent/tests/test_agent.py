@@ -52,6 +52,17 @@ def test_direct_answer_without_tool_use():
     assert len(client.calls) == 1
 
 
+def test_empty_final_turn_falls_back_to_nonblank_answer():
+    # stop_reason != tool_use with no text (max_tokens / empty end_turn / refusal)
+    # must not return a blank answer that silently scores wrong.
+    client = FakeClient([_response([], "end_turn")])
+    result = agent.run("Capital of France?", client=client)
+
+    assert result.answer == "I could not find a conclusive answer."
+    assert result.trajectory.steps[-1].kind == FINAL_ANSWER
+    assert result.steps == 1
+
+
 def test_tool_use_then_answer():
     client = FakeClient(
         [
