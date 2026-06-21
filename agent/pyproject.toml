@@ -1,0 +1,30 @@
+[project]
+name = "wiki-agent"
+version = "0.1.0"
+description = "A minimal from-scratch agent that answers questions using the Claude API and a single Wikipedia tool."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.40",
+    "httpx>=0.27",
+    "rich>=13.7",
+    "click>=8.1",
+]
+
+[project.scripts]
+wiki-agent = "wiki_agent.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["wiki_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
