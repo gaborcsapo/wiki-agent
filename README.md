@@ -20,23 +20,6 @@ Two deliberately **independent** subprojects:
 | [`agent/`](agent/README.md) | The agent: a loop over `messages.create` with one Wikipedia tool, plus a `rich` terminal CLI and a no-API-key demo mode. | ✅ |
 | [`eval/`](eval/README.md) | An [Inspect AI](https://inspect.aisi.org.uk/) suite: LLM-as-judge + code-based scorers over four benchmarks. | ✅ |
 
-## Architecture: the one boundary
-
-The two subprojects are decoupled — separate folders, separate `uv`
-environments, separate test suites. There is exactly **one** coupling: the eval
-imports the agent's single public function.
-
-```
- eval/  ──imports──▶  wiki_agent.run(question) -> AgentResult  ──▶  agent/
-   │                                                                  │
-   │  Inspect tasks, scorers,        the agent has ZERO knowledge     │
-   │  LLM-judge, datasets            of the eval. Dependency is       │
-   └──────────────────────────       strictly one-way. ──────────────┘
-```
-
-Keeping the surface this small means the agent can evolve freely as long as
-`run()` and `AgentResult` hold, and the eval never reaches into agent internals.
-
 ## Quickstart
 
 Both subprojects use [`uv`](https://docs.astral.sh/uv/) and each carries its own
@@ -119,7 +102,9 @@ chain facts* (`frames`), *can it reach beyond English* (`multilingual_qa`), and
 Full reruns of each benchmark on both the **Haiku** (shipped default) and
 **Sonnet 4.6** (quality tier) agent. The LLM-judge is held at Haiku throughout,
 so the deltas reflect the *agent*, not the grader. Every run completed all
-samples cleanly (no errors).
+samples cleanly (no errors). Reproduce any row with the canonical runner —
+`cd eval && uv run python run_pinned.py <task> <agent-model> <limit>` (e.g.
+`run_pinned.py frames claude-sonnet-4-6 100`).
 
 **`frames` — multi-hop reasoning** (100 questions)
 
@@ -232,16 +217,6 @@ Roughly in the order it happened:
 Each feature was **spec'd, then implemented, then measured** — the specs and
 plans live under [`docs/superpowers/`](docs/superpowers/), and the tuning history
 in [`docs/hill-climbing-report.md`](docs/hill-climbing-report.md).
-
-## Development principles
-
-- **Minimal and explicit** (Karpathy spirit). The hand-written tool-use loop is
-  the point — not replaced by a framework or the SDK tool-runner.
-- **Pure logic split from I/O.** Parsing/formatting is testable without a network
-  or API key; HTTP lives behind a thin seam.
-- **Config in one place.** Swapping Haiku → Sonnet is a one-line change.
-- **All custom logic unit-tested** with fakes — **no live API or network in
-  tests.** They pass with no `ANTHROPIC_API_KEY`.
 
 ## Repo map
 
