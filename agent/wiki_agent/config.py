@@ -13,7 +13,7 @@ import httpx
 AGENT_MODEL = "claude-haiku-4-5"
 
 # Claude request limits.
-MAX_TOKENS = 2048
+MAX_TOKENS = 4096
 DEFAULT_MAX_STEPS = 6
 
 # MediaWiki API. Wikipedia has a per-language edition; the tool can query any of
@@ -53,6 +53,6 @@ MAX_CONCURRENCY = 3
 MAX_BATCH = 10
 
 # Tool defaults.
-DEFAULT_SEARCH_LIMIT = 5
+DEFAULT_SEARCH_LIMIT = 10
 # Larger extract: FRAMES-style facts often sit in the article body, not the lead.
-DEFAULT_EXTRACT_CHARS = 4000
+DEFAULT_EXTRACT_CHARS = 6000

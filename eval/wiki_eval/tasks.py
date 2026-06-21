@@ -60,7 +60,7 @@ def frames():
             str(_DATASETS / "frames.jsonl"),
             sample_fields=_frames_record_to_sample,
         ),
-        solver=wiki_agent_solver(max_steps=20),
+        solver=wiki_agent_solver(max_steps=30),
         scorer=[correctness_judge(), used_wikipedia_tool(), retrieval_grounding()],
     )
 
