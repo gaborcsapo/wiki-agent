@@ -8,7 +8,13 @@ from pathlib import Path
 import httpx
 
 # Models. Start on Haiku; switch to "claude-sonnet-4-6" to upgrade.
-AGENT_MODEL = "claude-haiku-4-5"
+AGENT_MODEL = "claude-sonnet-4-6"
+
+# Extended thinking (Sonnet 4.6+ only — Haiku does NOT support it; leave None there).
+# THINKING = {"type": "adaptive"} enables adaptive thinking; EFFORT in
+# {"low","medium","high","max"} tunes its depth (the modern "thinking budget").
+THINKING: dict | None = None
+EFFORT: str | None = None
 
 # Claude request limits.
 MAX_TOKENS = 2048

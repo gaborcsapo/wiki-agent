@@ -80,6 +80,13 @@ def run(
         if on_step is not None:
             on_step(step)
 
+    # Optional thinking/effort knobs (Sonnet 4.6+). Omitted entirely on Haiku.
+    extra: dict = {}
+    if config.THINKING is not None:
+        extra["thinking"] = config.THINKING
+    if config.EFFORT is not None:
+        extra["output_config"] = {"effort": config.EFFORT}
+
     messages: list[dict] = [{"role": "user", "content": question}]
 
     for step in range(1, max_steps + 1):
@@ -89,8 +96,7 @@ def run(
             system=SYSTEM_PROMPT,
             tools=[wikipedia.TOOL_SCHEMA],
             messages=messages,
-            # NOTE: on Haiku we omit thinking/effort (unsupported). When moving
-            # to Sonnet, add: thinking={"type": "adaptive"}.
+            **extra,
         )
 
         text = _final_text(response.content)
@@ -144,6 +150,7 @@ def run(
                 ),
             }
         ],
+        **extra,
     )
     answer = _final_text(response.content) or "I could not find a conclusive answer."
     traj.answer = answer
