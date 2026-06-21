@@ -23,7 +23,13 @@ rounds below.
 | — | `max_steps` 6→20 | +0.00 corr / +0.08 recall (enabler) | R1 |
 
 **Things that did _not_ help** (tested and dropped): extended/adaptive thinking,
-chain-of-thought prompting, structured `ANSWER:` output format. See R2.
+chain-of-thought prompting, structured `ANSWER:` output format (R2); parallel
+multi-query lookups (R3, no FRAMES lift); search-returns-extracts and a
+native-first prompt (R4, reverted).
+
+**On other benchmarks:** the biggest win on **`multilingual_qa`** was
+multilingual `lang` support — querying the native-language Wikipedia edition —
+which drove **+0.20** (0.133 → 0.333, ~2.5×). See **Round 4**.
 
 ---
 
@@ -39,10 +45,17 @@ The settings the agent ships with today (all in `agent/wiki_agent/`).
 | Article fetch | body, `exchars=4000` | `wikipedia.get_article` | facts live below the lead (R1) |
 | Budget-exhaustion | forced final answer | `agent.run` | no canned non-answers (R1) |
 | System prompt | decisive v2 | `agent.SYSTEM_PROMPT` | stop looping, commit (R1) |
+| Multilingual | `lang` per-edition querying | `wikipedia` + prompt | +0.20 on multilingual_qa (R4) |
+| Parallel lookups | `queries`/`titles` lists, conc≤3 | `wikipedia` | kept (free when idle); no FRAMES lift (R3) |
+| Networking | maxlag + Retry-After/exp backoff | `wikipedia._get` | resilience under rate limits (infra) |
+| Cache | isolated disk cache, lang-keyed | `wikipedia.cache` | cheap benchmark re-runs (infra) |
 
 **Score on the 20-sample FRAMES subset:** Haiku default ≈ **0.55**; Sonnet ≈
 **0.75**. Grounding recall ≈ 0.50. (Extended thinking was tested and is not used
 — no gain, ~2× latency; see R2.)
+
+**Score on the 30-sample `multilingual_qa` subset (Haiku):** **0.13 → 0.33**
+after adding `lang` support (R4).
 
 ---
 
@@ -111,6 +124,66 @@ Kept only the Sonnet swap as a quality lever; the thinking/CoT/format changes
 left no code behind (the temporary `THINKING`/`EFFORT` knobs were removed once
 they showed no benefit).
 
+### Round 3 — Parallel multi-query lookups (FRAMES, 25-sample, Haiku)
+
+**Goal:** cut agent round-trips by letting the model batch several lookups into
+one tool call. **Protocol:** 4-run **warm-vs-warm** (cache cleared once, then
+baseline warm-up+measured, feature warm-up+measured) so the disk cache isn't a
+confound; agent pinned to Haiku. **Anchor:** baseline 0.680.
+
+| # | Isolated change | Correctness | Batch adoption | Verdict |
+|---|-----------------|------------:|---------------:|---------|
+| 1 | `queries`/`titles` list inputs, parallel fan-out (conc≤3) | 0.600 | **1 / 358 tool calls** | ➖ kept, no lift |
+
+**Story:** the feature works — the one time the model used it, it correctly
+fetched four Oklahoma-city articles in a single call — but it went essentially
+**unused** (0.3% of tool calls), so the −0.08 is pure noise. Two reasons:
+FRAMES multi-hop questions are **sequentially dependent** (each hop needs the
+previous answer, so there's nothing to parallelize), and Haiku doesn't
+proactively batch even when it could. With a warm cache the only possible win is
+fewer round-trips, which never materialized. Kept anyway: it's low-risk, free
+when idle, and pays off on independent-fan-out workloads — just not FRAMES.
+
+### Round 4 — Multilingual support (`multilingual_qa`, 30-sample, Haiku)
+
+**Goal:** close the multilingual gap — the English-only tool can't reach facts
+that live on native-language Wikipedias. **Protocol:** 3 iterative cycles, one
+tool change each, one run per cycle (correctness is cache-independent), failures
+inspected between cycles. **Anchor:** baseline 0.133.
+
+| # | Isolated change | Correctness | Verdict |
+|---|-----------------|------------:|---------|
+| C1 | `lang` param → query any-language edition (host + cache key per-lang) | **0.333** | ✅ kept (**+0.20**) |
+| C2 | search returns intro extracts (`generator=search`) | 0.267 | ❌ reverted (diverted the agent) |
+| C3 | native-first prompt ("skip English, read full article") | 0.267 (×2) | ❌ reverted (no gain) |
+
+**Story:** **C1 was the whole story** — letting the agent set `lang` to the
+native edition took correctness from 0.13 → 0.33 (~2.5×), with the biggest lift
+on questions *asked* in another language (`foreign_language_query` 0% → 62%). C2
+backfired: the lead snippet *diverted* the agent away from opening the full
+native article that held the fact (e.g. it chased a tangential page for Grímur
+Thomsen and never read his Icelandic bio), so it was reverted. C3's native-first
+prompt was neutral-to-worse over two runs and dropped (YAGNI). The remaining
+`cross_lingual_fact` failures (~8%) are **not** tool-reach problems — the agent
+reaches the native article and the fact is in the returned extract — they're
+bounded by **Haiku's foreign-language comprehension + the 6-step budget**. Next
+levers there: Sonnet, or a larger step budget. Full write-up:
+`docs/superpowers/reports/2026-06-21-multilingual-climb.md`.
+
+### Infrastructure that made the climbing cheap (no correctness delta)
+
+Not a correctness lever, but part of the experience: the tool gained an
+**isolated disk cache** (raw API JSON, language-keyed) plus **maxlag +
+Retry-After/exponential backoff**. Together they let benchmarks be re-run many
+times without re-fetching or tripping Wikipedia's rate limiter — essential when
+hill-climbing means dozens of runs. A separate `ratelimit_bench.py` empirically
+picked the best anonymous client config (serial + compliant User-Agent →
+~3.3 req/s, <1% throttling). A **model-pinning runner** (`eval/run_pinned.py`)
+was added after a concurrent edit flipped the shared `AGENT_MODEL` mid-experiment
+— it pins the agent model in-process so a run can't be skewed by on-disk changes.
+Per-run analyzers (`analyze_runs.py`, `analyze_multilingual.py`) print accuracy,
+per-category/-language breakdowns, and failure lists to drive the next cycle.
+
 ---
 
 ## Open ideas / next levers
@@ -124,6 +197,13 @@ Not yet tried — candidates for the next round:
 - **Numeric/temporal reasoning.** A cluster of failures is arithmetic over
   correctly-retrieved facts — a scratchpad/compute step or a stronger judge.
 - **Stronger judge.** The judge is Haiku; verify it isn't the ceiling.
+- **Multilingual ceiling (R4).** `cross_lingual_fact` is comprehension/budget
+  bound, not tool-reach bound: re-run multilingual on **Sonnet** and/or raise
+  `multilingual_qa`'s step budget (it's still 6; FRAMES uses 20). Also worth
+  trying: `langlinks` to pivot en→native titles directly.
+- **Parallel lookups on a non-sequential benchmark (R3).** The batch feature was
+  idle on FRAMES because the hops are dependent; it may help on tasks with
+  independent fan-out (compare-N-entities, disambiguation) — measure there.
 
 ---
 
