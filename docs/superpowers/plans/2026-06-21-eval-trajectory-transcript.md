@@ -41,24 +41,19 @@ def _traj(steps, answer="42"):
     return {"question": "Q?", "model": "claude-haiku-4-5", "answer": answer, "steps": steps}
 
 
-def test_renders_question_model_and_answer():
-    out = format_trajectory(_traj([], answer="The answer is 42."))
-    assert "Q?" in out
-    assert "claude-haiku-4-5" in out
-    assert "The answer is 42." in out
-
-
-def test_renders_assistant_text():
-    out = format_trajectory(_traj([{"kind": "assistant_text", "content": "Let me search."}]))
-    assert "Let me search." in out
-
-
-def test_renders_tool_call_with_name_and_args():
-    out = format_trajectory(_traj([
-        {"kind": "tool_call", "tool_name": "get_article", "tool_input": {"title": "Moon"}},
-    ]))
-    assert "get_article" in out
-    assert "Moon" in out
+def test_renders_outputs_and_tools():
+    out = format_trajectory(_traj(
+        steps=[
+            {"kind": "assistant_text", "content": "Let me search."},
+            {"kind": "tool_call", "tool_name": "get_article", "tool_input": {"title": "Moon"}},
+            {"kind": "tool_result", "content": "The Moon is a satellite."},
+        ],
+        answer="The answer is 42.",
+    ))
+    # question, model, assistant text, tool name + args, result, answer all present
+    for expected in ("Q?", "claude-haiku-4-5", "Let me search.",
+                     "get_article", "Moon", "The Moon is a satellite.", "The answer is 42."):
+        assert expected in out
 
 
 def test_truncates_long_tool_result():
@@ -68,13 +63,9 @@ def test_truncates_long_tool_result():
     assert out.count("x") <= MAX_RESULT_CHARS
 
 
-def test_unknown_kind_does_not_raise():
-    out = format_trajectory(_traj([{"kind": "mystery", "content": "??"}]))
-    assert isinstance(out, str)
-
-
-def test_missing_fields_do_not_raise():
-    out = format_trajectory({"steps": [{"kind": "tool_call"}]})
+def test_robust_to_unknown_kind_and_missing_fields():
+    # unknown step kind and a tool_call missing tool_name/tool_input must not raise
+    out = format_trajectory({"steps": [{"kind": "mystery", "content": "??"}, {"kind": "tool_call"}]})
     assert isinstance(out, str)
 ```
 
@@ -158,7 +149,7 @@ def format_trajectory(traj: dict[str, Any]) -> str:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd eval && uv run pytest tests/test_render.py -v`
-Expected: PASS (6 passed).
+Expected: PASS (3 passed).
 
 - [ ] **Step 5: Commit**
 
@@ -240,17 +231,19 @@ Expected: the eval completes, writing a `.eval` log under `eval/logs/`.
 
 - [ ] **Step 3: Confirm the Info entry is present in the log**
 
-Run:
+Run (pass the exact log path printed by Step 2; info content is stored as an
+attachment, so resolve it via `sample.attachments`):
 ```bash
 cd eval && uv run python -c "
-from inspect_ai.log import list_eval_logs, read_eval_log
-log = read_eval_log(list_eval_logs()[-1].name)
+from inspect_ai.log import read_eval_log
+log = read_eval_log('logs/<the-log-file>.eval')
 for s in log.samples:
-    kinds = [e.event for e in s.events]
     infos = [e for e in s.events if e.event == 'info']
-    print(s.id, 'info_events=', len(infos))
-    if infos:
-        print(str(infos[0].data)[:300])
+    print('sample', s.id, 'info_events=', len(infos))
+    for e in infos:
+        ref = e.data
+        key = ref.split('attachment://')[1] if isinstance(ref, str) and ref.startswith('attachment://') else None
+        print((s.attachments.get(key, ref) if key else ref)[:300])
 "
 ```
 Expected: each sample reports `info_events= 1` and prints the start of the markdown dump (Question/Model/tool calls).
