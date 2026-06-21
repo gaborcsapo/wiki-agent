@@ -99,15 +99,21 @@ def _strip_html(text: str) -> str:
 
 
 def _parse_search(data: dict, query: str) -> str:
-    """Format an ``action=query&list=search`` JSON response into readable text."""
-    results = data.get("query", {}).get("search", [])
-    if not results:
+    """Format a ``generator=search&prop=extracts`` JSON response into readable text.
+
+    Each hit carries a short intro extract, so the agent gets readable content
+    straight from the search call (one fewer round-trip than search-then-read).
+    Results are ordered by the generator ``index``.
+    """
+    pages = data.get("query", {}).get("pages", [])
+    if not pages:
         return f"No Wikipedia articles found for '{query}'."
+    pages = sorted(pages, key=lambda p: p.get("index", 0))
     lines = [f"Search results for '{query}':"]
-    for i, hit in enumerate(results, start=1):
-        title = hit.get("title", "(untitled)")
-        snippet = _strip_html(hit.get("snippet", ""))
-        lines.append(f"{i}. {title} — {snippet}" if snippet else f"{i}. {title}")
+    for i, page in enumerate(pages, start=1):
+        title = page.get("title", "(untitled)")
+        extract = (page.get("extract") or "").strip()
+        lines.append(f"{i}. {title} — {extract}" if extract else f"{i}. {title}")
     return "\n".join(lines)
 
 
@@ -222,7 +228,16 @@ def search(query: str, limit: int = config.DEFAULT_SEARCH_LIMIT, *,
     client = client or _make_client()
     try:
         data = _get(
-            {"action": "query", "list": "search", "srsearch": query, "srlimit": limit},
+            {
+                "action": "query",
+                "generator": "search",
+                "gsrsearch": query,
+                "gsrlimit": limit,
+                "prop": "extracts",
+                "exintro": 1,
+                "explaintext": 1,
+                "exchars": config.SEARCH_EXTRACT_CHARS,
+            },
             client,
             lang,
         )

@@ -6,23 +6,23 @@ import pytest
 from wiki_agent import config, wikipedia
 
 
-def test_parse_search_formats_numbered_list_and_strips_html():
+def test_parse_search_formats_numbered_list_with_extracts_in_index_order():
     data = {
         "query": {
-            "search": [
-                {"title": "Moon landing", "snippet": 'first <span class="searchmatch">Moon</span> landing'},
-                {"title": "Apollo 11", "snippet": "crewed &amp; landed"},
+            "pages": [
+                {"index": 2, "title": "Apollo 11", "extract": "Apollo 11 was a spaceflight."},
+                {"index": 1, "title": "Moon landing", "extract": "First crewed Moon landing."},
             ]
         }
     }
     out = wikipedia._parse_search(data, "moon landing")
-    assert "1. Moon landing — first Moon landing" in out
-    assert "2. Apollo 11 — crewed & landed" in out
-    assert "<span" not in out  # HTML stripped
+    assert "1. Moon landing — First crewed Moon landing." in out
+    assert "2. Apollo 11 — Apollo 11 was a spaceflight." in out
+    assert out.index("Moon landing") < out.index("Apollo 11")  # ordered by index
 
 
 def test_parse_search_empty():
-    out = wikipedia._parse_search({"query": {"search": []}}, "zzzqqq")
+    out = wikipedia._parse_search({"query": {"pages": []}}, "zzzqqq")
     assert "No Wikipedia articles found" in out
 
 

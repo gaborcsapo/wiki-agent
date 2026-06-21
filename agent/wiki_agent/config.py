@@ -53,5 +53,8 @@ MAX_BATCH = 10
 
 # Tool defaults.
 DEFAULT_SEARCH_LIMIT = 5
+# Search returns a short intro extract per hit (one generator query), so the
+# agent gets readable content without a separate get_article round-trip.
+SEARCH_EXTRACT_CHARS = 500
 # Larger extract: FRAMES-style facts often sit in the article body, not the lead.
 DEFAULT_EXTRACT_CHARS = 4000
