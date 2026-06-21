@@ -22,7 +22,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from . import config
+from . import cache, config
 from .agent import run
 from .demos.player import load_demos, pick_demo, play
 from .demos.record import record_demos
@@ -90,8 +90,16 @@ def cli() -> None:
 @click.option("--model", default=None, help="Override the agent model (default: Haiku).")
 @click.option("--max-steps", default=config.DEFAULT_MAX_STEPS, show_default=True, help="Max tool-use iterations.")
 @click.option("--save/--no-save", default=True, show_default=True, help="Save the trajectory JSON to traces/.")
-def ask(question: str, model: str | None, max_steps: int, save: bool) -> None:
+@click.option("--no-cache", is_flag=True, help="Bypass the Wikipedia disk cache for this run.")
+@click.option("--clear-cache", is_flag=True, help="Delete cached Wikipedia pages before running.")
+def ask(question: str, model: str | None, max_steps: int, save: bool,
+        no_cache: bool, clear_cache: bool) -> None:
     """Answer QUESTION live, rendering each step as it happens."""
+    if clear_cache:
+        removed = cache.clear()
+        console.print(f"[dim]Cleared {removed} cached Wikipedia entries.[/dim]")
+    if no_cache:
+        config.CACHE_ENABLED = False
     load_dotenv()
     _render_question(question)
     result = run(question, model=model, max_steps=max_steps, on_step=_render_step)
