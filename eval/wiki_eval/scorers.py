@@ -27,6 +27,7 @@ from inspect_ai.scorer import (
     Target,
     Value,
     accuracy,
+    grouped,
     mean,
     metric,
     model_graded_qa,
@@ -276,5 +277,63 @@ def abstention_judge(model: str | object = JUDGE_MODEL):
                 "category": category,
             },
         )
+
+    return score
+
+
+# --- Multilingual benchmark -----------------------------------------------
+# The default model_graded_qa template, plus an explicit instruction that the
+# submission may be in a non-English language (the foreign_language_query
+# category): grade facts, not language. Keeps the four template fields
+# model_graded_qa fills ({question}/{answer}/{criterion}/{instructions}).
+
+_MULTILINGUAL_QA_TEMPLATE = """
+You are assessing a submitted answer on a given task based on a criterion. Here is the data:
+
+[BEGIN DATA]
+***
+[Task]: {question}
+***
+[Submission]: {answer}
+***
+[Criterion]: {criterion}
+***
+[END DATA]
+
+The task may be posed in a non-English language and the submission may be written
+in any language. Grade ONLY whether the submission is factually correct with
+respect to the criterion. Do not penalize the submission for being written in a
+different language from the criterion, nor for transliteration, paraphrase, or
+formatting. A correct fact stated in any language counts as correct.
+
+Does the submission meet the criterion?
+
+{instructions}
+"""
+
+
+@scorer(
+    metrics=[
+        accuracy(),
+        stderr(),
+        grouped(accuracy(), "category", all=False),  # per failure-mode accuracy
+        grouped(accuracy(), "language", all=False),   # per-language accuracy
+    ]
+)
+def multilingual_correctness():
+    """LLM-judge correctness for the multilingual benchmark.
+
+    Same model-graded grading as `correctness_judge`, but with a language-neutral
+    template (so a correct answer given in the query's language is not marked
+    wrong), and grouped accuracy so scores break down by category and language.
+    """
+    graded = model_graded_qa(
+        template=_MULTILINGUAL_QA_TEMPLATE,
+        model=JUDGE_MODEL,
+        partial_credit=False,
+    )
+
+    async def score(state: TaskState, target: Target) -> Score:
+        return await graded(state, target)
 
     return score
