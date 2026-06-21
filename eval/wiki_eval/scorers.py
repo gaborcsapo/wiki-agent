@@ -84,9 +84,13 @@ def _grounding_scores(gold: set[str], read: set[str]) -> dict[str, float]:
     return {"recall": recall, "precision": precision, "f1": f1}
 
 
-def correctness_judge():
-    """LLM-as-judge correctness scorer. The sample `target` is the rubric."""
-    return model_graded_qa(model=JUDGE_MODEL, partial_credit=False)
+def correctness_judge(model: str | object = JUDGE_MODEL):
+    """LLM-as-judge correctness scorer. The sample `target` is the rubric.
+
+    `model` is injectable (defaults to the configured judge) so tests can pass a
+    mockllm model and grade offline, mirroring ``abstention_judge``.
+    """
+    return model_graded_qa(model=model, partial_credit=False)
 
 
 @scorer(metrics=[accuracy(), stderr()])

@@ -36,7 +36,9 @@ def _record(sample) -> dict:
     correct = bool(sc is not None and getattr(sc, "value", None) == CORRECT)
     meta = getattr(sample, "metadata", None) or {}
     steps = (meta.get("trajectory") or {}).get("steps", [])
-    langs = sorted({(s.get("tool_input") or {}).get("lang", "en")
+    # Record "?" when a tool call omitted `lang` (English by default) so the
+    # failure listing distinguishes a deliberate en query from an unset one.
+    langs = sorted({(s.get("tool_input") or {}).get("lang", "?")
                     for s in steps if s.get("kind") == "tool_call"})
     return {
         "correct": correct,
