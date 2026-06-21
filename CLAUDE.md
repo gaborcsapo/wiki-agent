@@ -30,8 +30,10 @@ File map:
 
 | Path | Responsibility |
 |------|----------------|
-| `agent/wiki_agent/config.py` | Constants (model, endpoint, limits) — single source of truth |
-| `agent/wiki_agent/wikipedia.py` | The one tool: schema + actions + **pure parsers split from HTTP I/O** |
+| `agent/wiki_agent/config.py` | Constants (model, endpoint, limits, backoff, cache) — single source of truth |
+| `agent/wiki_agent/wikipedia.py` | The one tool: schema + actions + **pure parsers split from HTTP I/O**; `_get` adds maxlag, Retry-After/exponential backoff, and cache lookup |
+| `agent/wiki_agent/cache.py` | Tiny isolated disk cache of raw API JSON (`agent/.wiki_cache/`, no eviction) |
+| `agent/wiki_agent/ratelimit_bench.py` | Opt-in **live** benchmark: compares client setups for throttling, picks the best (pure scoring helpers tested) |
 | `agent/wiki_agent/trajectory.py` | `Trajectory`/`Step` dataclasses + JSON persistence |
 | `agent/wiki_agent/agent.py` | The loop: `run() -> AgentResult` |
 | `agent/wiki_agent/cli.py` | `wiki-agent` CLI (`ask` default + `demo`) + `rich` trajectory rendering |
@@ -63,8 +65,11 @@ Run from within the relevant subproject (each has its own venv):
 uv sync
 uv run pytest
 uv run wiki-agent "Who was the first person to walk on the Moon?"
+uv run wiki-agent ask "..." --no-cache       # bypass the Wikipedia disk cache
+uv run wiki-agent ask "..." --clear-cache    # clear the cache, then run
 uv run wiki-agent demo                 # replay a cached hard question (no API key)
 uv run wiki-agent demo --record        # re-record cached demos (needs API key)
+uv run python -m wiki_agent.ratelimit_bench  # live rate-limit comparison (opt-in, ~6 min)
 
 # eval/
 uv sync
@@ -81,6 +86,19 @@ uv run inspect view start --host 0.0.0.0 --port 7575   # results UI; 0.0.0.0 = r
 - API key comes from `.env` (per subproject, **gitignored**) or the environment.
   `.env.example` documents the variable. Never commit a key.
 
+## Wikipedia API etiquette
+
+- **Anonymous "good citizenship"** is the chosen path — a compliant `User-Agent`
+  (with contact + library/version) grants the 200 req/min tier; auth gives no
+  read benefit under the 2026 rules. The agent is serial by construction.
+- `_get` sends `maxlag=5`, retries 429/503 and in-200 `maxlag` bodies honoring
+  `Retry-After` (else ≥5s then exponential). All knobs live in `config.py`.
+- Responses are cached as raw JSON in `agent/.wiki_cache/` (gitignored, no
+  eviction) keyed by the semantic params, so benchmark re-runs skip the network.
+  `--no-cache` / `--clear-cache` (or `cache.clear()`) manage it.
+- See `docs/superpowers/specs/2026-06-21-wikipedia-tool-ratelimit-cache-design.md`
+  for the research and rationale.
+
 ## Git workflow — commit proactively (no need to ask)
 
 When a unit of work is complete, **commit it** with a meaningful message (what
@@ -94,6 +112,7 @@ agent's work:**
 - Run `git status` and review your staged diff (`git diff --cached`) before
   committing; if files you didn't touch are staged, unstage them.
 - Keep each commit scoped to one subproject / one task.
+- Do not create regular git branches, because that would mess with other agents working in the same repo. If needed create git worktrees or just work on master. 
 - Never stage `.env` or other secrets (they're gitignored — keep it that way).
 
 ## Extending
