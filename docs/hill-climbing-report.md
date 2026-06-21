@@ -21,6 +21,12 @@ rounds below.
 | 2 | **Decisive prompt** (decompose, commit to an answer, don't loop) | +0.15 | R1 |
 | 3 | Fetch article **body** instead of intro-only (`exchars` 1500→4000) | +0.10 | R1 |
 | — | `max_steps` 6→20 | +0.00 corr / +0.08 recall (enabler) | R1 |
+| — | **Accuracy levers** (search 5→10, extract→6000, steps→30, tokens→4096) | **+0.10 Haiku / −0.05 Sonnet** | R5 |
+
+**Model-dependent lesson (R5):** "turn the knobs up" levers help the **weak**
+model (Haiku) but **not the strong one** (Sonnet) — Sonnet already finds the
+right page from fewer results and a smaller extract, so extra context is
+distraction, not signal. Tune levers to the model tier.
 
 **Things that did _not_ help** (tested and dropped): extended/adaptive thinking,
 chain-of-thought prompting, structured `ANSWER:` output format (R2); parallel
@@ -41,8 +47,10 @@ The settings the agent ships with today (all in `agent/wiki_agent/`).
 |--------|-------|-------|-----|
 | Agent model | `claude-haiku-4-5` (default) | `config.py` `AGENT_MODEL` | cheap/fast for dev |
 | — quality lever | `claude-sonnet-4-6` on demand | `run(model=...)` | +0.20 correctness (R2) |
-| Step budget | `max_steps=20` | `eval/.../tasks.py` `frames()` | FRAMES needs 2–15 article reads (R1) |
-| Article fetch | body, `exchars=4000` | `wikipedia.get_article` | facts live below the lead (R1) |
+| Step budget | `max_steps=30` | `eval/.../tasks.py` `frames()` | FRAMES needs many reads; 6→20→30 (R1, R5) |
+| Article fetch | body, `exchars=6000` | `wikipedia.get_article` | facts below the lead; 1500→4000→6000 (R1, R5) |
+| Search breadth | `DEFAULT_SEARCH_LIMIT=10` | `config.py` | more candidate titles; helps Haiku (R5) |
+| Response tokens | `MAX_TOKENS=4096` | `config.py` | headroom for long answers (R5) |
 | Budget-exhaustion | forced final answer | `agent.run` | no canned non-answers (R1) |
 | System prompt | decisive v2 | `agent.SYSTEM_PROMPT` | stop looping, commit (R1) |
 | Multilingual | `lang` per-edition querying | `wikipedia` + prompt | +0.20 on multilingual_qa (R4) |
@@ -50,9 +58,10 @@ The settings the agent ships with today (all in `agent/wiki_agent/`).
 | Networking | maxlag + Retry-After/exp backoff | `wikipedia._get` | resilience under rate limits (infra) |
 | Cache | isolated disk cache, lang-keyed | `wikipedia.cache` | cheap benchmark re-runs (infra) |
 
-**Score on the 20-sample FRAMES subset:** Haiku default ≈ **0.55**; Sonnet ≈
-**0.75**. Grounding recall ≈ 0.50. (Extended thinking was tested and is not used
-— no gain, ~2× latency; see R2.)
+**Score on the 20-sample FRAMES subset:** Haiku (default, with R5 levers) ≈
+**0.65**; Sonnet ≈ **0.80**. Grounding recall ≈ 0.50. The R5 levers help Haiku
+(+0.10) but not Sonnet (−0.05) — see R5. (Extended thinking was tested and is not
+used — no gain, ~2× latency; see R2.)
 
 **Score on the 30-sample `multilingual_qa` subset (Haiku):** **0.13 → 0.33**
 after adding `lang` support (R4).
@@ -169,6 +178,31 @@ reaches the native article and the fact is in the returned extract — they're
 bounded by **Haiku's foreign-language comprehension + the 6-step budget**. Next
 levers there: Sonnet, or a larger step budget. Full write-up:
 `docs/superpowers/reports/2026-06-21-multilingual-climb.md`.
+
+### Round 5 — Accuracy levers, Haiku vs Sonnet (FRAMES, 20-sample)
+
+**Goal:** do "turn the knobs up" levers improve correctness, and does it depend
+on the model? **Changes (all bumped together):** `DEFAULT_SEARCH_LIMIT` 5→10,
+`DEFAULT_EXTRACT_CHARS` 4000→6000, FRAMES `max_steps` 20→30, `MAX_TOKENS`
+2048→4096. Ran the same config on both tiers.
+
+| | Haiku | Sonnet |
+|------------|------:|-------:|
+| baseline | 0.55 | 0.80 |
+| + levers | **0.65** | 0.75 |
+| Δ | **+0.10** ✅ | −0.05 ➖ |
+
+**Story:** the levers **help the weak model and not the strong one.** Haiku gains
++0.10 — more candidate titles and a longer extract give it more chances to land
+on the right page and pull the fact. Sonnet *regresses* slightly (within noise):
+it already nails the right page from 5 results and a 4k extract, so 10 results +
+6k chars is distraction, not signal. **Kept as the default** because the shipped
+default is Haiku; cost is ~2× wall-clock (bigger extracts bust the read cache).
+On Sonnet, prefer the leaner settings — the levers don't earn their cost there.
+Also notable: the current Sonnet baseline (0.80) beats R2's (0.75) — the R3/R4
+parallel + multilingual work lifted Sonnet too. Caveat: this was a **combined**
+bump, not isolated per-lever (the user asked to raise all at once); if precise
+per-lever attribution matters, isolate in a follow-up.
 
 ### Infrastructure that made the climbing cheap (no correctness delta)
 
