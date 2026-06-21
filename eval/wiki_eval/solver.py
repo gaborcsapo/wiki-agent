@@ -14,12 +14,14 @@ Tokens columns reflect the agent — not just the judge.
 from __future__ import annotations
 
 import anyio
+from inspect_ai.log import transcript
 from inspect_ai.model import ModelOutput, ModelUsage
 from inspect_ai.solver import Generate, TaskState, solver
 
 import wiki_agent
 
 from .config import AGENT_MODEL
+from .render import format_trajectory
 
 
 def _trajectory_usage(steps: list[dict]) -> ModelUsage:
@@ -67,6 +69,9 @@ def wiki_agent_solver(model: str | None = AGENT_MODEL, max_steps: int = 6):
         state.output.usage = usage
         state.metadata["trajectory"] = traj
         state.metadata["steps"] = result.steps
+        # Also surface a readable dump in the sample transcript (Info entry),
+        # easier to scan than the raw metadata JSON.
+        transcript().info(format_trajectory(traj))
         return state
 
     return solve
