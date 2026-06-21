@@ -83,7 +83,7 @@ uv run inspect view start --host 0.0.0.0 --port 7575   # results UI; 0.0.0.0 = r
 
 - Default model is **Sonnet** (`claude-sonnet-4-6`) — FRAMES hill-climbing showed
   it lifts correctness ~0.55 → ~0.75 over Haiku at ~1.5× latency (see
-  `docs/superpowers/notes/2026-06-21-frames-model-tuning.md`). Switch
+  `docs/hill-climbing-report.md`). Switch
   `AGENT_MODEL` back to `claude-haiku-4-5` in `config.py` for the cheaper/faster
   tier. Optional `THINKING`/`EFFORT` knobs (`config.py`) enable adaptive thinking
   on Sonnet — left **off** by default (no measured gain, ~2× latency). Haiku does
@@ -129,3 +129,6 @@ agent's work:**
   task's scorer list.
 - **Tool changes:** keep parsing pure and unit-tested; the tool returns readable
   strings and never raises into the model.
+- **Tuning the agent (hill-climbing):** follow the protocol in
+  `docs/hill-climbing-report.md` (fixed FRAMES subset, judge held constant, one
+  change per cycle) and **append your results as a new round** there.
