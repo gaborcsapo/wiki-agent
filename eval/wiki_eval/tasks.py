@@ -44,12 +44,16 @@ def _frames_record_to_sample(record: dict) -> Sample:
 
 @task
 def frames():
-    """FRAMES multi-hop Wikipedia QA, with a retrieval-grounding (recall) signal."""
+    """FRAMES multi-hop Wikipedia QA, with a retrieval-grounding (recall) signal.
+
+    FRAMES questions need 2-15 article reads, so the agent gets a larger step
+    budget than the small benchmarks' default.
+    """
     return Task(
         dataset=json_dataset(
             str(_DATASETS / "frames.jsonl"),
             sample_fields=_frames_record_to_sample,
         ),
-        solver=wiki_agent_solver(),
+        solver=wiki_agent_solver(max_steps=20),
         scorer=[correctness_judge(), used_wikipedia_tool(), retrieval_grounding()],
     )
